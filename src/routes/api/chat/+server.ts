@@ -204,91 +204,284 @@ const createWorkoutTool = tool({
 		})
 	}),
 	execute: async ({ goals, equipment, duration, experience, workoutPlan }) => {
-		// This is where you could save to database or perform other actions
-		console.log('Creating workout with:', { goals, equipment, duration, experience });
+		try {
+			console.log('🏋️ createWorkoutTool: Starting execution...');
+			
+			// Log to both console and return in response for visibility
+			const logMessage = `Creating workout with: ${JSON.stringify({ goals, equipment, duration, experience })}`;
+			console.log('🏋️ createWorkoutTool:', logMessage);
+			
+			// Validate input parameters
+			if (!workoutPlan || !workoutPlan.name) {
+				console.error('🏋️ createWorkoutTool: Invalid workout plan provided');
+				throw new Error('Invalid workout plan structure');
+			}
 
-		return {
-			success: true,
-			message: 'Workout routine created successfully! Would you like me to save this workout to your profile so you can access it later?',
-			workout: workoutPlan,
-			shouldAskToSave: true
-		};
+			console.log(`🏋️ createWorkoutTool: Workout plan created: ${workoutPlan.name} with ${workoutPlan.exercises?.length || 0} exercises`);
+			
+			const result = {
+				success: true,
+				message:
+					'Workout routine created successfully! Would you like me to save this workout to your profile so you can access it later?',
+				workout: workoutPlan,
+				shouldAskToSave: true,
+				debug: logMessage // Include debug info in response
+			};
+			
+			console.log('🏋️ createWorkoutTool: Execution completed successfully, returning result');
+			return result;
+		} catch (error) {
+			console.error('🏋️ createWorkoutTool: Error occurred:', error);
+			const errorResult = {
+				success: false,
+				message: 'Sorry, there was an error creating the workout routine. Please try again.',
+				error: error instanceof Error ? error.message : 'Unknown error'
+			};
+			console.log('🏋️ createWorkoutTool: Returning error result:', errorResult);
+			return errorResult;
+		}
 	}
 });
 
 // Define the save workout tool factory
-const createSaveWorkoutTool = (userId: string | undefined) => tool({
-	description: 'Save a workout routine to the user\'s profile',
-	parameters: z.object({
-		workoutPlan: z.object({
-			name: z.string().describe('Name of the workout routine'),
-			description: z.string().describe('Brief description of the workout'),
-			exercises: z.array(
-				z.object({
-					name: z.string().describe('Exercise name'),
-					sets: z.number().describe('Number of sets'),
-					reps: z.string().describe('Number of reps (can be a range like "8-12")'),
-					rest: z.string().describe('Rest time between sets'),
-					equipment: z.string().optional().describe('Required equipment'),
-					notes: z.string().optional().describe('Form tips or modifications')
-				})
-			),
-			totalDuration: z.number().describe('Estimated total workout duration in minutes'),
-			frequency: z.string().describe('Recommended frequency per week')
+const createSaveWorkoutTool = (userId: string | undefined) =>
+	tool({
+		description: "Save a workout routine to the user's profile",
+		parameters: z.object({
+			workoutPlan: z.object({
+				name: z.string().describe('Name of the workout routine'),
+				description: z.string().describe('Brief description of the workout'),
+				exercises: z.array(
+					z.object({
+						name: z.string().describe('Exercise name'),
+						sets: z.number().describe('Number of sets'),
+						reps: z.string().describe('Number of reps (can be a range like "8-12")'),
+						rest: z.string().describe('Rest time between sets'),
+						equipment: z.string().optional().describe('Required equipment'),
+						notes: z.string().optional().describe('Form tips or modifications')
+					})
+				),
+				totalDuration: z.number().describe('Estimated total workout duration in minutes'),
+				frequency: z.string().describe('Recommended frequency per week')
+			}),
+			goals: z.string().describe("The user's fitness goals"),
+			equipment: z.array(z.string()).describe('Available equipment'),
+			fitnessLevel: z.enum(['beginner', 'intermediate', 'advanced']).describe('User fitness level')
 		}),
-		goals: z.string().describe("The user's fitness goals"),
-		equipment: z.array(z.string()).describe('Available equipment'),
-		fitnessLevel: z.enum(['beginner', 'intermediate', 'advanced']).describe('User fitness level')
-	}),
-	execute: async ({ workoutPlan, goals, equipment, fitnessLevel }) => {
-		try {
-			if (!userId) {
+		execute: async ({ workoutPlan, goals, equipment, fitnessLevel }) => {
+			try {
+				console.log('Starting saveWorkout execution...');
+				
+				if (!userId) {
+					console.log('No user ID found, user not logged in');
+					return {
+						success: false,
+						message:
+							'You need to be logged in to save workouts. Please sign in to save this workout to your profile.'
+					};
+				}
+
+				console.log(`Saving workout "${workoutPlan.name}" for user ${userId}`);
+
+				// Map fitness level to enum
+				const fitnessLevelEnum = fitnessLevel.toUpperCase() as
+					| 'BEGINNER'
+					| 'INTERMEDIATE'
+					| 'ADVANCED';
+
+				// Generate exercise configs for all exercises in the workout with timeout
+				const exerciseConfigIds: (string | null)[] = [];
+				const TIMEOUT_MS = 30000; // 30 second timeout per exercise
+				
+				console.log(`Processing ${workoutPlan.exercises.length} exercises for config generation...`);
+
+				for (let i = 0; i < workoutPlan.exercises.length; i++) {
+					const exercise = workoutPlan.exercises[i];
+					console.log(`Processing exercise ${i + 1}/${workoutPlan.exercises.length}: ${exercise.name}`);
+					
+					try {
+						// Check if config already exists
+						console.log(`Checking if config exists for: ${exercise.name}`);
+						const existingConfig = await prisma.exerciseConfig.findUnique({
+							where: { name: exercise.name.toLowerCase().replace(/[^a-z0-9]/g, '_') }
+						});
+
+						if (existingConfig) {
+							console.log(`Found existing config for ${exercise.name}`);
+							exerciseConfigIds.push(existingConfig.id);
+						} else {
+							console.log(`Generating new config for ${exercise.name}`);
+							
+							// Create a promise with timeout for the API call
+							const configPromise = fetch('http://localhost:5173/api/exercise-config', {
+								method: 'POST',
+								headers: { 'Content-Type': 'application/json' },
+								body: JSON.stringify({
+									exerciseName: exercise.name,
+									exerciseDescription: exercise.notes || `${exercise.name} exercise`
+								})
+							});
+
+							const timeoutPromise = new Promise((_, reject) =>
+								setTimeout(() => reject(new Error('Config generation timeout')), TIMEOUT_MS)
+							);
+
+							const configResponse = await Promise.race([configPromise, timeoutPromise]) as Response;
+
+							if (configResponse.ok) {
+								const configResult = await configResponse.json();
+								if (configResult.success) {
+									console.log(`Successfully generated config for ${exercise.name}`);
+									// Save the generated config to database
+									const savedConfig = await prisma.exerciseConfig.create({
+										data: {
+											name: configResult.config.name,
+											displayName: exercise.name,
+											description: exercise.notes || `${exercise.name} exercise`,
+											exerciseType: configResult.analysis.exerciseType,
+											primaryMuscles: configResult.analysis.primaryMuscles,
+											movementPattern: configResult.analysis.movementPattern,
+											keyJoints: configResult.analysis.keyJoints,
+											movementDirection: configResult.analysis.movementDirection,
+											config: configResult.config,
+											generatedBy: 'AI'
+										}
+									});
+									exerciseConfigIds.push(savedConfig.id);
+									console.log(`Saved config to database for ${exercise.name}`);
+								} else {
+									console.warn(`Failed to generate config for ${exercise.name}: ${configResult.error}`);
+									exerciseConfigIds.push(null);
+								}
+							} else {
+								console.warn(`Config generation API failed for ${exercise.name}: ${configResponse.status}`);
+								exerciseConfigIds.push(null);
+							}
+						}
+					} catch (error) {
+						console.error(`Error generating config for ${exercise.name}:`, error);
+						exerciseConfigIds.push(null);
+						// Continue with next exercise instead of failing completely
+					}
+				}
+
+				console.log('Creating workout in database...');
+				// Create workout in database with linked exercise configs
+				const savedWorkout = await prisma.workout.create({
+					data: {
+						name: workoutPlan.name,
+						description: workoutPlan.description,
+						totalDuration: workoutPlan.totalDuration,
+						frequency: workoutPlan.frequency,
+						fitnessLevel: fitnessLevelEnum,
+						goals,
+						equipment,
+						userId,
+						exercises: {
+							create: workoutPlan.exercises.map((exercise, index) => ({
+								name: exercise.name,
+								sets: exercise.sets,
+								reps: exercise.reps,
+								rest: exercise.rest,
+								equipment: exercise.equipment,
+								notes: exercise.notes,
+								exerciseConfigId: exerciseConfigIds[index]
+							}))
+						}
+					},
+					include: {
+						exercises: {
+							include: {
+								exerciseConfig: true
+							}
+						}
+					}
+				});
+
+				const configsGenerated = exerciseConfigIds.filter((id) => id !== null).length;
+				console.log(`Workout saved successfully with ${configsGenerated} configs generated`);
+				
+				return {
+					success: true,
+					message: `Perfect! Your workout "${workoutPlan.name}" has been saved to your profile with ${configsGenerated} AI-generated exercise tracking configurations. You can access it anytime from your workout library and start tracking your reps in real-time!`,
+					workoutId: savedWorkout.id,
+					configsGenerated
+				};
+			} catch (error) {
+				console.error('Error saving workout:', error);
 				return {
 					success: false,
-					message: 'You need to be logged in to save workouts. Please sign in to save this workout to your profile.'
+					message: 'Sorry, there was an error saving your workout. Please try again.',
+					error: error instanceof Error ? error.message : 'Unknown error'
 				};
 			}
+		}
+	});
+
+// Add exercise config generation capability
+const generateExerciseConfigTool = tool({
+	description: 'Generate MediaPipe pose tracking configuration for any exercise',
+	parameters: z.object({
+		exerciseName: z.string().describe('Name of the exercise'),
+		exerciseDescription: z
+			.string()
+			.optional()
+			.describe('Optional description of how the exercise is performed')
+	}),
+	execute: async ({ exerciseName, exerciseDescription }) => {
+		try {
+			console.log(`Generating exercise config for: ${exerciseName}`);
 			
-			// Map fitness level to enum
-			const fitnessLevelEnum = fitnessLevel.toUpperCase() as 'BEGINNER' | 'INTERMEDIATE' | 'ADVANCED';
+			const TIMEOUT_MS = 30000; // 30 second timeout
 			
-			// Create workout in database
-			const savedWorkout = await prisma.workout.create({
-				data: {
-					name: workoutPlan.name,
-					description: workoutPlan.description,
-					totalDuration: workoutPlan.totalDuration,
-					frequency: workoutPlan.frequency,
-					fitnessLevel: fitnessLevelEnum,
-					goals,
-					equipment,
-					userId,
-					exercises: {
-						create: workoutPlan.exercises.map(exercise => ({
-							name: exercise.name,
-							sets: exercise.sets,
-							reps: exercise.reps,
-							rest: exercise.rest,
-							equipment: exercise.equipment,
-							notes: exercise.notes
-						}))
-					}
+			const fetchPromise = fetch('/api/exercise-config', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
 				},
-				include: {
-					exercises: true
-				}
+				body: JSON.stringify({
+					exerciseName,
+					exerciseDescription
+				})
 			});
 
-			return {
-				success: true,
-				message: `Perfect! Your workout "${workoutPlan.name}" has been saved to your profile. You can access it anytime from your workout library.`,
-				workoutId: savedWorkout.id
-			};
+			const timeoutPromise = new Promise((_, reject) =>
+				setTimeout(() => reject(new Error('Request timeout')), TIMEOUT_MS)
+			);
+
+			const response = await Promise.race([fetchPromise, timeoutPromise]) as Response;
+
+			if (!response.ok) {
+				console.error(`Exercise config API failed with status: ${response.status}`);
+				return {
+					success: false,
+					message: `Failed to generate exercise configuration for ${exerciseName} (HTTP ${response.status})`
+				};
+			}
+
+			const result = await response.json();
+
+			if (result.success) {
+				console.log(`Successfully generated config for: ${exerciseName}`);
+				return {
+					success: true,
+					message: `Successfully generated tracking configuration for ${exerciseName}`,
+					exerciseName: result.exerciseName,
+					analysis: result.analysis,
+					config: result.config
+				};
+			} else {
+				console.error(`Config generation failed for ${exerciseName}:`, result.error);
+				return {
+					success: false,
+					message: `Failed to generate configuration: ${result.error}`
+				};
+			}
 		} catch (error) {
-			console.error('Error saving workout:', error);
+			console.error(`Error in generateExerciseConfigTool for ${exerciseName}:`, error);
 			return {
 				success: false,
-				message: 'Sorry, there was an error saving your workout. Please try again.'
+				message: `Error generating exercise configuration: ${error instanceof Error ? error.message : 'Unknown error'}`
 			};
 		}
 	}
@@ -296,19 +489,26 @@ const createSaveWorkoutTool = (userId: string | undefined) => tool({
 
 export const POST: RequestHandler = async ({ request }) => {
 	try {
+		console.log('Chat API: Received request');
 		const { messages } = await request.json();
 
 		if (!messages || !Array.isArray(messages)) {
+			console.error('Chat API: Invalid messages format');
 			return json({ error: 'Invalid messages format' }, { status: 400 });
 		}
 
+		console.log(`Chat API: Processing ${messages.length} messages`);
+
 		// Get user session
+		console.log('Chat API: Getting user session...');
 		const session = await auth.api.getSession({ headers: request.headers });
 		const userId = session?.user?.id;
+		console.log(`Chat API: User ID: ${userId || 'Not logged in'}`);
 
 		// Get the latest user message
 		const lastMessage = messages[messages.length - 1];
 		const userQuery = lastMessage?.content || '';
+		console.log(`Chat API: User query: ${userQuery.substring(0, 100)}...`);
 
 		let systemPrompt = `You are FitWise AI, a knowledgeable fitness and hypertrophy training assistant. 
 You provide evidence-based advice on muscle building, training techniques, and exercise science.
@@ -322,6 +522,8 @@ For advanced: Incorporate complex movements, higher intensity, and advanced tech
 
 After creating a workout routine, ALWAYS ask the user if they would like to save it to their profile for future reference. If they say yes, use the saveWorkout tool to save it to their account.
 
+NEW CAPABILITY: You can also generate pose tracking configurations for any exercise using the generateExerciseConfig tool. This allows the app to track and provide real-time feedback on virtually any exercise, not just the predefined ones. When users ask about specific exercises or mention exercises not commonly tracked, you can generate tracking configurations for them.
+
 Important: Respond directly and clearly without showing any internal thinking process. Do not use <think> tags or expose reasoning steps.`;
 
 		let ragContext = '';
@@ -329,28 +531,34 @@ Important: Respond directly and clearly without showing any internal thinking pr
 
 		// Only attempt RAG if the query is fitness-related
 		if (isFitnessRelated(userQuery)) {
-			console.log('Fitness-related query detected, attempting RAG retrieval...');
+			console.log('Chat API: Fitness-related query detected, attempting RAG retrieval...');
 
-			const ragResult = await retrieveRelevantContent(userQuery);
+			try {
+				const ragResult = await retrieveRelevantContent(userQuery);
 
-			if (ragResult.hasRelevantData) {
-				console.log('High-relevance content found, using RAG data');
-				ragContext = ragResult.context;
-				sources = ragResult.sources || [];
+				if (ragResult.hasRelevantData) {
+					console.log('Chat API: High-relevance content found, using RAG data');
+					ragContext = ragResult.context;
+					sources = ragResult.sources || [];
 
-				systemPrompt += `\n\nRELEVANT TRAINING INFORMATION:
+					systemPrompt += `\n\nRELEVANT TRAINING INFORMATION:
 ${ragContext}
 
 When answering, prioritize the information from these high-relevance sources. 
 Cite specific sources when referencing their content.
 If the user's question relates to the provided sources, use that information as your primary reference.`;
-			} else {
-				console.log('No high-relevance content found, proceeding without RAG');
+				} else {
+					console.log('Chat API: No high-relevance content found, proceeding without RAG');
+				}
+			} catch (ragError) {
+				console.error('Chat API: RAG retrieval failed:', ragError);
+				// Continue without RAG if it fails
 			}
 		} else {
-			console.log('Non-fitness query, skipping RAG retrieval');
+			console.log('Chat API: Non-fitness query, skipping RAG retrieval');
 		}
 
+		console.log('Chat API: Starting streamText generation...');
 		// Generate response using the AI SDK with streaming
 		const result = await streamText({
 			model: chatModel,
@@ -363,13 +571,43 @@ If the user's question relates to the provided sources, use that information as 
 			],
 			tools: {
 				createWorkout: createWorkoutTool,
-				saveWorkout: createSaveWorkoutTool(userId)
+				saveWorkout: createSaveWorkoutTool(userId),
+				generateExerciseConfig: generateExerciseConfigTool
 			},
-			temperature: 0.7,
-			maxTokens: 1000,
 			maxSteps: 5,
-			toolCallStreaming: true
+			toolCallStreaming: true,
+			onStepFinish: (step) => {
+				console.log('Chat API: Step finished:', {
+					stepType: step.stepType,
+					toolCalls: step.toolCalls?.length || 0,
+					text: step.text ? step.text.substring(0, 100) + '...' : 'No text',
+					toolResults: step.toolResults?.length || 0
+				});
+				
+				// Log tool results if any
+				if (step.toolResults && step.toolResults.length > 0) {
+					step.toolResults.forEach((result, index) => {
+						console.log(`Chat API: Tool result ${index + 1}:`, {
+							toolCallId: result.toolCallId,
+							toolName: result.toolName,
+							result: typeof result.result === 'object' 
+								? JSON.stringify(result.result).substring(0, 200) + '...'
+								: result.result
+						});
+					});
+				}
+			},
+			onFinish: (result) => {
+				console.log('Chat API: Generation finished:', {
+					finishReason: result.finishReason,
+					usage: result.usage,
+					steps: result.steps.length,
+					totalToolCalls: result.steps.reduce((total, step) => total + (step.toolCalls?.length || 0), 0)
+				});
+			}
 		});
+
+		console.log('Chat API: Stream created successfully, returning response');
 
 		// Convert the stream to a Response object
 		return new Response(result.toDataStream(), {
@@ -380,7 +618,7 @@ If the user's question relates to the provided sources, use that information as 
 			}
 		});
 	} catch (error) {
-		console.error('Chat API error:', error);
+		console.error('Chat API: Fatal error:', error);
 
 		return json(
 			{

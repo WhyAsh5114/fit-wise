@@ -88,19 +88,42 @@ model Workout {
 }
 
 model WorkoutExercise {
-  id          String  @id @default(cuid())
-  name        String
-  sets        Int
-  reps        String  // Can be a range like "8-12"
-  rest        String  // Rest time between sets
-  equipment   String? // Required equipment for this exercise
-  notes       String? // Form tips or modifications
-  workoutId   String
-  workout     Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              String         @id @default(cuid())
+  name            String
+  sets            Int
+  reps            String         // Can be a range like "8-12"
+  rest            String         // Rest time between sets
+  equipment       String?        // Required equipment for this exercise
+  notes           String?        // Form tips or modifications
+  workoutId       String
+  workout         Workout        @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  exerciseConfigId String?       // Optional link to exercise config
+  exerciseConfig  ExerciseConfig? @relation(fields: [exerciseConfigId], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
 
   @@map("workout_exercise")
+}
+
+model ExerciseConfig {
+  id              String   @id @default(cuid())
+  name            String   @unique // Normalized exercise name (e.g., "bicep_curl")
+  displayName     String   // Human-readable name (e.g., "Bicep Curl")
+  description     String?  // Optional exercise description
+  exerciseType    String   // upper_body, lower_body, full_body, core
+  primaryMuscles  String[] // Array of primary muscles worked
+  movementPattern String   // push, pull, squat, hinge, lunge, rotation, isometric
+  keyJoints       String[] // Key joints involved in movement
+  movementDirection String // vertical, horizontal, diagonal, rotational
+  config          Json     // The actual MediaPipe configuration as JSON
+  generatedBy     String   @default("AI") // "AI" or "PREDEFINED"
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  // Track which workouts use this config
+  workoutExercises WorkoutExercise[]
+
+  @@map("exercise_config")
 }
 
 enum FitnessLevel {

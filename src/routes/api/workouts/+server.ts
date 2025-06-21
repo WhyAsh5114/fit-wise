@@ -19,7 +19,11 @@ export const GET: RequestHandler = async ({ request }) => {
 				userId
 			},
 			include: {
-				exercises: true
+				exercises: {
+					include: {
+						exerciseConfig: true
+					}
+				}
 			},
 			orderBy: {
 				createdAt: 'desc'

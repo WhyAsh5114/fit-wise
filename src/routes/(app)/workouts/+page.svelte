@@ -4,14 +4,28 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
-	import { VideoIcon, CameraIcon, PlayIcon, Square, UploadIcon, TargetIcon } from 'lucide-svelte';
-	import { segmentReps, EXERCISE_CONFIGS, type Pose as PoseData, type ExerciseName } from '$lib/workout-utils';
+	import {
+		VideoIcon,
+		CameraIcon,
+		PlayIcon,
+		Square,
+		UploadIcon,
+		TargetIcon,
+		Dumbbell
+	} from 'lucide-svelte';
+	import {
+		processExerciseReps,
+		type Pose as PoseData,
+		type ExerciseName,
+		type ExerciseConfig
+	} from '$lib/workout-utils';
+	import { toast } from 'svelte-sonner';
 
 	let videoElement: HTMLVideoElement;
 	let canvasElement: HTMLCanvasElement;
 	let canvasCtx: CanvasRenderingContext2D;
 	let fileInput: HTMLInputElement;
-	
+
 	let isLoading = false;
 	let isDetecting = false;
 	let selectedSource = 'camera';
@@ -40,7 +54,10 @@
 	onMount(async () => {
 		// Initialize canvas context
 		canvasCtx = canvasElement.getContext('2d')!;
-		
+
+		// Load saved workouts
+		await loadSavedWorkouts();
+
 		// Dynamic imports for MediaPipe (client-side only)
 		try {
 			const [
@@ -73,6 +90,9 @@
 			console.log('Initial camera enumeration failed, will try again when user interacts');
 			statusMessage = 'Click "Refresh" to load available cameras';
 		}
+
+		// Load saved workouts
+		await loadSavedWorkouts();
 	});
 
 	async function getAvailableCameras() {
@@ -84,12 +104,13 @@
 			}
 
 			statusMessage = 'Requesting camera permission...';
-			
+
 			// First request permission to get device labels
-			await navigator.mediaDevices.getUserMedia({ video: true })
-				.then(stream => {
+			await navigator.mediaDevices
+				.getUserMedia({ video: true })
+				.then((stream) => {
 					// Stop the stream immediately, we just needed permission
-					stream.getTracks().forEach(track => track.stop());
+					stream.getTracks().forEach((track) => track.stop());
 					statusMessage = 'Permission granted, enumerating cameras...';
 				})
 				.catch(() => {
@@ -98,9 +119,9 @@
 				});
 
 			const devices = await navigator.mediaDevices.enumerateDevices();
-			availableCameras = devices.filter(device => device.kind === 'videoinput');
+			availableCameras = devices.filter((device) => device.kind === 'videoinput');
 			console.log('Available cameras:', availableCameras);
-			
+
 			if (availableCameras.length > 0) {
 				if (!selectedCameraId) {
 					selectedCameraId = availableCameras[0].deviceId;
@@ -111,7 +132,8 @@
 					statusMessage = '';
 				}, 3000);
 			} else {
-				statusMessage = 'No cameras found. Make sure camera is connected and permissions are granted.';
+				statusMessage =
+					'No cameras found. Make sure camera is connected and permissions are granted.';
 			}
 		} catch (error) {
 			console.error('Error getting cameras:', error);
@@ -145,7 +167,7 @@
 		// Clear canvas
 		canvasCtx.save();
 		canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-		
+
 		// Draw the video frame
 		canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
 
@@ -153,34 +175,35 @@
 		if (results.poseLandmarks) {
 			// Add pose to history for rep counting
 			poseHistory.push(results.poseLandmarks);
-		// Update rep count using the workout utils
-		if (poseHistory.length > 15) { // Need minimum history for reliable detection
-			const result = segmentReps(poseHistory, EXERCISE_CONFIGS[selectedExercise], lastProcessedRepCount, {
-				enableRAG,
-				enableVoice
-			});
-			// Only allow rep count to increase, never decrease
-			if (result.repCount > maxRepsEverSeen) {
-				maxRepsEverSeen = result.repCount;
-				currentReps = result.repCount;
-				lastProcessedRepCount = result.repCount; // Update the last processed count
+			// Update rep count using dynamic exercise configs
+			if (poseHistory.length > 15 && currentExercise?.exerciseConfig) {
+				processExerciseReps(poseHistory, currentExercise.name, lastProcessedRepCount, {
+					enableRAG,
+					enableVoice
+				})
+					.then((result) => {
+						if (result.repCount > maxRepsEverSeen) {
+							maxRepsEverSeen = result.repCount;
+							currentReps = result.repCount;
+							lastProcessedRepCount = result.repCount;
+						}
+					})
+					.catch(console.error);
 			}
-			// New rep segments are automatically processed and logged only for new reps
-		}
 
 			// Draw connections
 			drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
 				color: '#00FF00',
 				lineWidth: 4
 			});
-			
+
 			// Draw landmarks
 			drawLandmarks(canvasCtx, results.poseLandmarks, {
 				color: '#FF0000',
 				radius: 6
 			});
 		}
-		
+
 		canvasCtx.restore();
 	}
 
@@ -282,10 +305,10 @@
 
 	function stopDetection() {
 		isDetecting = false;
-		
+
 		// Stop camera stream
 		if (currentStream) {
-			currentStream.getTracks().forEach(track => track.stop());
+			currentStream.getTracks().forEach((track) => track.stop());
 			currentStream = null;
 		}
 
@@ -311,20 +334,56 @@
 		lastProcessedRepCount = 0;
 	}
 
-	function onExerciseChange() {
+	// Workout management
+	interface WorkoutExercise {
+		id: string;
+		name: string;
+		sets: number;
+		reps: string;
+		rest: string;
+		exerciseConfig?: { config: ExerciseConfig };
+	}
+
+	interface Workout {
+		id: string;
+		name: string;
+		exercises: WorkoutExercise[];
+	}
+
+	let savedWorkouts: Workout[] = [];
+	let selectedWorkout: Workout | null = null;
+	let currentExercise: WorkoutExercise | null = null;
+
+	// Load saved workouts
+	async function loadSavedWorkouts() {
+		try {
+			const response = await fetch('/api/workouts');
+			if (response.ok) {
+				const data = await response.json();
+				savedWorkouts = data.workouts || [];
+			}
+		} catch (error) {
+			console.error('Error loading workouts:', error);
+		}
+	}
+
+	function selectWorkout(workout: Workout) {
+		selectedWorkout = workout;
+		currentExercise = workout.exercises[0] || null;
 		resetRepCount();
+		toast.success(`Selected: ${workout.name}`);
 	}
 </script>
 
-<div class="container mx-auto p-6 space-y-6">
+<div class="container mx-auto space-y-6 p-6">
 	<div class="text-center">
-		<h1 class="text-3xl font-bold mb-2">AI-Powered Workout Analysis</h1>
+		<h1 class="mb-2 text-3xl font-bold">AI-Powered Workout Analysis</h1>
 		<p class="text-muted-foreground">
 			Select your camera or upload a video to analyze your workout form with AI pose detection
 		</p>
 	</div>
 
-	<div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+	<div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
 		<!-- Controls Panel -->
 		<Card class="lg:col-span-1">
 			<CardHeader>
@@ -334,29 +393,49 @@
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-4">
-				<!-- Exercise Selection -->
+				<!-- Workout Selection -->
 				<div class="space-y-2">
-					<Label for="exercise-select">Exercise Type</Label>
-					<select 
-						id="exercise-select"
-						bind:value={selectedExercise}
-						onchange={onExerciseChange}
-						class="w-full px-3 py-2 border border-input bg-background rounded-md text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
-					>
-						<option value="bicep_curl">💪 Bicep Curls</option>
-						<option value="squat">🏋️ Squats</option>
-						<option value="push_up">⬇️ Push-ups</option>
-					</select>
+					<Label for="workout-select">Select Workout</Label>
+					{#if savedWorkouts.length > 0}
+						<select
+							id="workout-select"
+							onchange={(e) => {
+								const workoutId = e.currentTarget.value;
+								const workout = savedWorkouts.find((w) => w.id === workoutId);
+								if (workout) selectWorkout(workout);
+							}}
+							class="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
+						>
+							<option value="">Choose a workout...</option>
+							{#each savedWorkouts as workout (workout.id)}
+								<option value={workout.id}>🏋️ {workout.name}</option>
+							{/each}
+						</select>
+					{:else}
+						<div class="text-muted-foreground py-4 text-center">
+							<Dumbbell class="mx-auto mb-2 h-8 w-8 opacity-50" />
+							<p class="text-sm">No saved workouts</p>
+						</div>
+					{/if}
 				</div>
+
+				{#if selectedWorkout && currentExercise}
+					<div class="bg-muted rounded-lg p-3">
+						<p class="text-sm font-medium">{currentExercise.name}</p>
+						<p class="text-muted-foreground text-xs">
+							{currentExercise.sets} sets × {currentExercise.reps} reps
+						</p>
+					</div>
+				{/if}
 
 				<!-- Source Type Selection -->
 				<div class="space-y-2">
 					<Label for="source-select">Input Source</Label>
-					<select 
+					<select
 						id="source-select"
 						bind:value={selectedSource}
 						onchange={() => stopDetection()}
-						class="w-full px-3 py-2 border border-input bg-background rounded-md text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+						class="border-input bg-background ring-offset-background focus:ring-ring w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2"
 					>
 						<option value="camera">📹 Camera</option>
 						<option value="video">🎥 Video File</option>
@@ -368,19 +447,14 @@
 					<div class="space-y-2">
 						<div class="flex items-center justify-between">
 							<Label for="camera-select">Camera</Label>
-							<Button 
-								onclick={getAvailableCameras}
-								size="sm"
-								variant="outline"
-								class="h-8 px-2"
-							>
+							<Button onclick={getAvailableCameras} size="sm" variant="outline" class="h-8 px-2">
 								🔄 Refresh
 							</Button>
 						</div>
-						<select 
+						<select
 							id="camera-select"
 							bind:value={selectedCameraId}
-							class="w-full px-3 py-2 border border-input bg-background rounded-md text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+							class="border-input bg-background ring-offset-background focus:ring-ring w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2"
 						>
 							{#if availableCameras.length === 0}
 								<option value="">No cameras found - click Refresh</option>
@@ -392,26 +466,22 @@
 								{/each}
 							{/if}
 						</select>
-						
+
 						{#if statusMessage}
-							<p class="text-xs text-muted-foreground">{statusMessage}</p>
+							<p class="text-muted-foreground text-xs">{statusMessage}</p>
 						{/if}
 					</div>
 
 					<!-- Camera Controls -->
 					<div class="space-y-2">
-						<Button 
-							onclick={startCamera} 
-							disabled={isLoading || !selectedCameraId}
-							class="w-full"
-						>
+						<Button onclick={startCamera} disabled={isLoading || !selectedCameraId} class="w-full">
 							{#if isLoading}
 								Loading...
 							{:else if isDetecting}
-								<Square class="h-4 w-4 mr-2" />
+								<Square class="mr-2 h-4 w-4" />
 								Stop Camera
 							{:else}
-								<PlayIcon class="h-4 w-4 mr-2" />
+								<PlayIcon class="mr-2 h-4 w-4" />
 								Start Camera
 							{/if}
 						</Button>
@@ -426,7 +496,7 @@
 								type="file"
 								accept="video/*"
 								onchange={handleVideoUpload}
-								class="file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-primary file:text-primary-foreground hover:file:bg-primary/80 w-full px-3 py-2 border border-input bg-background rounded-md text-sm"
+								class="file:bg-primary file:text-primary-foreground hover:file:bg-primary/80 border-input bg-background w-full rounded-md border px-3 py-2 text-sm file:mr-4 file:rounded-md file:border-0 file:px-4 file:py-2 file:text-sm file:font-medium"
 							/>
 						</div>
 					</div>
@@ -446,39 +516,35 @@
 
 				{#if isDetecting || currentStream || videoElement?.src}
 					<Button onclick={stopDetection} variant="destructive" class="w-full">
-						<Square class="h-4 w-4 mr-2" />
+						<Square class="mr-2 h-4 w-4" />
 						Stop Detection
 					</Button>
 				{/if}
 
 				<!-- Rep Counter -->
 				{#if isDetecting}
-					<div class="space-y-2 p-4 bg-muted rounded-lg">
+					<div class="bg-muted space-y-2 rounded-lg p-4">
 						<div class="flex items-center justify-between">
 							<h3 class="font-semibold">Rep Counter</h3>
-							<Button onclick={resetRepCount} size="sm" variant="outline">
-								Reset
-							</Button>
+							<Button onclick={resetRepCount} size="sm" variant="outline">Reset</Button>
 						</div>
 						<div class="text-center">
-							<div class="text-3xl font-bold text-primary">{currentReps}</div>
-							<div class="text-sm text-muted-foreground">Repetitions</div>
+							<div class="text-primary text-3xl font-bold">{currentReps}</div>
+							<div class="text-muted-foreground text-sm">Repetitions</div>
 						</div>
 					</div>
 				{/if}
 
 				<!-- AI Features -->
-				<div class="space-y-3 p-4 bg-muted rounded-lg">
-					<h3 class="font-semibold text-sm">AI Features</h3>
-					
+				<div class="bg-muted space-y-3 rounded-lg p-4">
+					<h3 class="text-sm font-semibold">AI Features</h3>
+
 					<div class="space-y-3">
 						<!-- RAG Toggle -->
 						<div class="flex items-center justify-between">
 							<div class="space-y-1">
-								<Label for="rag-toggle" class="text-sm font-medium">
-									Enhanced Reference
-								</Label>
-								<p class="text-xs text-muted-foreground">
+								<Label for="rag-toggle" class="text-sm font-medium">Enhanced Reference</Label>
+								<p class="text-muted-foreground text-xs">
 									Uses exercise database for better feedback
 								</p>
 							</div>
@@ -488,25 +554,23 @@
 						<!-- Voice Toggle -->
 						<div class="flex items-center justify-between">
 							<div class="space-y-1">
-								<Label for="voice-toggle" class="text-sm font-medium">
-									Voice Feedback
-								</Label>
-								<p class="text-xs text-muted-foreground">
-									Spoken feedback in Bengali
-								</p>
+								<Label for="voice-toggle" class="text-sm font-medium">Voice Feedback</Label>
+								<p class="text-muted-foreground text-xs">Spoken feedback in Bengali</p>
 							</div>
 							<Switch id="voice-toggle" bind:checked={enableVoice} />
 						</div>
 
 						{#if enableRAG || enableVoice}
-							<div class="text-xs text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950 p-2 rounded border border-orange-200 dark:border-orange-800">
+							<div
+								class="rounded border border-orange-200 bg-orange-50 p-2 text-xs text-orange-700 dark:border-orange-800 dark:bg-orange-950 dark:text-orange-300"
+							>
 								⚠️ Enhanced features enabled - responses may be slower
 								{#if enableRAG && enableVoice}
-									<br/>📚 Reference lookup + 🔊 Voice generation
+									<br />📚 Reference lookup + 🔊 Voice generation
 								{:else if enableRAG}
-									<br/>📚 Reference lookup enabled
+									<br />📚 Reference lookup enabled
 								{:else if enableVoice}
-									<br/>🔊 Voice generation enabled
+									<br />🔊 Voice generation enabled
 								{/if}
 							</div>
 						{/if}
@@ -524,33 +588,35 @@
 				</CardTitle>
 			</CardHeader>
 			<CardContent>
-				<div class="relative aspect-video bg-black rounded-lg overflow-hidden">
+				<div class="relative aspect-video overflow-hidden rounded-lg bg-black">
 					<!-- Hidden video element -->
 					<video
 						bind:this={videoElement}
-						class="absolute inset-0 w-full h-full object-contain"
+						class="absolute inset-0 h-full w-full object-contain"
 						style="display: none;"
 						playsinline
 						muted
 					></video>
-					
+
 					<!-- Canvas for pose visualization -->
 					<canvas
 						bind:this={canvasElement}
-						class="absolute inset-0 w-full h-full object-contain"
+						class="absolute inset-0 h-full w-full object-contain"
 						width="640"
 						height="480"
 					></canvas>
-					
+
 					<!-- Overlay for no input state -->
 					{#if !isDetecting && !videoElement?.src}
-						<div class="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground">
-							<div class="text-center space-y-2">
+						<div
+							class="text-muted-foreground absolute inset-0 flex flex-col items-center justify-center"
+						>
+							<div class="space-y-2 text-center">
 								{#if selectedSource === 'camera'}
-									<CameraIcon class="h-12 w-12 mx-auto opacity-50" />
+									<CameraIcon class="mx-auto h-12 w-12 opacity-50" />
 									<p>Select a camera and click "Start Camera" to begin</p>
 								{:else}
-									<UploadIcon class="h-12 w-12 mx-auto opacity-50" />
+									<UploadIcon class="mx-auto h-12 w-12 opacity-50" />
 									<p>Upload a video file to analyze your workout</p>
 								{/if}
 							</div>
@@ -562,21 +628,23 @@
 				{#if isDetecting}
 					<div class="mt-4 space-y-2">
 						<div class="flex items-center gap-2 text-sm text-green-600">
-							<div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-							AI pose detection active - {selectedExercise.replace('_', ' ')}
+							<div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+							AI pose detection active - {currentExercise?.name || 'No exercise selected'}
 						</div>
-						
+
 						{#if enableRAG || enableVoice}
 							<div class="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-								<div class="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
-								Enhanced feedback: 
+								<div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+								Enhanced feedback:
 								{#if enableRAG}📚 Reference{/if}
-								{#if enableRAG && enableVoice} + {/if}
+								{#if enableRAG && enableVoice}
+									+
+								{/if}
 								{#if enableVoice}🔊 Voice{/if}
 							</div>
 						{:else}
 							<div class="flex items-center gap-2 text-xs text-gray-500">
-								<div class="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+								<div class="h-1.5 w-1.5 rounded-full bg-gray-400"></div>
 								Fast mode: Text feedback only
 							</div>
 						{/if}
@@ -591,33 +659,33 @@
 		<CardHeader>
 			<CardTitle class="flex items-center gap-2">
 				<TargetIcon class="h-5 w-5" />
-				Exercise: {selectedExercise.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+				Exercise: {currentExercise?.name || 'No exercise selected'}
 			</CardTitle>
 		</CardHeader>
 		<CardContent>
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+			<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
 				<div>
-					<h4 class="font-medium mb-2">How it works:</h4>
+					<h4 class="mb-2 font-medium">How it works:</h4>
 					{#if selectedExercise === 'bicep_curl'}
 						<p class="text-muted-foreground">
-							Tracks your elbow angle to count bicep curl repetitions. 
-							Start with arms extended, curl up to flex, then lower back down for one rep.
+							Tracks your elbow angle to count bicep curl repetitions. Start with arms extended,
+							curl up to flex, then lower back down for one rep.
 						</p>
 					{:else if selectedExercise === 'squat'}
 						<p class="text-muted-foreground">
-							Monitors your knee angle to detect squat movements. 
-							Start standing, squat down until thighs are parallel, then stand back up for one rep.
+							Monitors your knee angle to detect squat movements. Start standing, squat down until
+							thighs are parallel, then stand back up for one rep.
 						</p>
 					{:else if selectedExercise === 'push_up'}
 						<p class="text-muted-foreground">
-							Analyzes your arm angle during push-ups. 
-							Start in plank position, lower down by bending arms, then push back up for one rep.
+							Analyzes your arm angle during push-ups. Start in plank position, lower down by
+							bending arms, then push back up for one rep.
 						</p>
 					{/if}
 				</div>
 				<div>
-					<h4 class="font-medium mb-2">Tips for best results:</h4>
-					<ul class="space-y-1 text-muted-foreground">
+					<h4 class="mb-2 font-medium">Tips for best results:</h4>
+					<ul class="text-muted-foreground space-y-1">
 						<li>• Position yourself sideways to the camera</li>
 						<li>• Ensure your full body is visible</li>
 						<li>• Maintain consistent lighting</li>
@@ -634,10 +702,10 @@
 			<CardTitle>How to Use</CardTitle>
 		</CardHeader>
 		<CardContent>
-			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+			<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
 				<div>
-					<h4 class="font-medium mb-2">Camera Mode:</h4>
-					<ul class="space-y-1 text-muted-foreground">
+					<h4 class="mb-2 font-medium">Camera Mode:</h4>
+					<ul class="text-muted-foreground space-y-1">
 						<li>• Select your preferred camera from the dropdown</li>
 						<li>• Click "Start Camera" to begin live pose detection</li>
 						<li>• Position yourself in front of the camera</li>
@@ -646,8 +714,8 @@
 					</ul>
 				</div>
 				<div>
-					<h4 class="font-medium mb-2">Video Mode:</h4>
-					<ul class="space-y-1 text-muted-foreground">
+					<h4 class="mb-2 font-medium">Video Mode:</h4>
+					<ul class="text-muted-foreground space-y-1">
 						<li>• Upload a video file of your workout</li>
 						<li>• Use the play/pause controls to navigate</li>
 						<li>• AI will analyze poses frame by frame</li>

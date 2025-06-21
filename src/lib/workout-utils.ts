@@ -7,7 +7,7 @@ export type Landmark = {
 
 export type Pose = Landmark[];
 
-export type ExerciseName = 'bicep_curl' | 'squat' | 'push_up';
+export type ExerciseName = string; // Now supports any exercise name
 
 type JointConfig = {
 	joint: number;
@@ -427,7 +427,94 @@ async function processRepSegment(repSegment: RepSegment, feedbackOptions: Feedba
 	}
 }
 
-// --- Pre-defined Exercise Configurations ---
+// --- Dynamic Exercise Configuration System ---
+
+// Cache for generated exercise configurations
+const exerciseConfigCache = new Map<string, ExerciseConfig>();
+
+/**
+ * Generate exercise configuration using LLM
+ */
+async function generateExerciseConfig(exerciseName: string, exerciseDescription?: string): Promise<ExerciseConfig | null> {
+	try {
+		const response = await fetch('/api/exercise-config', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify({
+				exerciseName,
+				exerciseDescription
+			})
+		});
+
+		if (!response.ok) {
+			console.error('Failed to generate exercise config:', response.statusText);
+			return null;
+		}
+
+		const result = await response.json();
+		if (result.success && result.config) {
+			console.log(`Generated config for ${exerciseName}:`, result.analysis);
+			return result.config as ExerciseConfig;
+		}
+
+		return null;
+	} catch (error) {
+		console.error('Error generating exercise config:', error);
+		return null;
+	}
+}
+
+/**
+ * Get exercise configuration - checks cache first, then predefined configs, then generates
+ */
+export async function getExerciseConfig(exerciseName: string, exerciseDescription?: string): Promise<ExerciseConfig | null> {
+	// Normalize exercise name
+	const normalizedName = exerciseName.toLowerCase().replace(/[^a-z0-9]/g, '_');
+	
+	// Check cache first
+	if (exerciseConfigCache.has(normalizedName)) {
+		return exerciseConfigCache.get(normalizedName)!;
+	}
+	
+	// Check predefined configs
+	if (PREDEFINED_EXERCISE_CONFIGS[normalizedName]) {
+		const config = PREDEFINED_EXERCISE_CONFIGS[normalizedName];
+		exerciseConfigCache.set(normalizedName, config);
+		return config;
+	}
+	
+	// Generate new config using LLM
+	console.log(`Generating new exercise config for: ${exerciseName}`);
+	const generatedConfig = await generateExerciseConfig(exerciseName, exerciseDescription);
+	
+	if (generatedConfig) {
+		// Ensure the config has the normalized name
+		generatedConfig.name = normalizedName;
+		exerciseConfigCache.set(normalizedName, generatedConfig);
+		return generatedConfig;
+	}
+	
+	console.warn(`Could not generate config for exercise: ${exerciseName}`);
+	return null;
+}
+
+/**
+ * Clear the exercise config cache (useful for testing or resetting)
+ */
+export function clearExerciseConfigCache(): void {
+	exerciseConfigCache.clear();
+}
+
+/**
+ * Get all cached exercise configs
+ */
+export function getCachedExerciseConfigs(): Record<string, ExerciseConfig> {
+	return Object.fromEntries(exerciseConfigCache.entries());
+}
+
+// --- Pre-defined Exercise Configurations (Fallback) ---
 
 const LANDMARK_INDICES = {
 	NOSE: 0,
@@ -465,7 +552,7 @@ const LANDMARK_INDICES = {
 	RIGHT_FOOT_INDEX: 32
 };
 
-export const EXERCISE_CONFIGS: Record<ExerciseName, ExerciseConfig> = {
+export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
 	bicep_curl: {
 		name: 'bicep_curl',
 		initialDirection: 'down',
@@ -506,3 +593,36 @@ export const EXERCISE_CONFIGS: Record<ExerciseName, ExerciseConfig> = {
 		]
 	}
 };
+
+/**
+ * Convenience function that automatically gets exercise config and processes reps
+ * @param poseHistory An array of poses from MediaPipe
+ * @param exerciseName Name of the exercise (will generate config if not found)
+ * @param lastProcessedRepCount The number of reps that were already processed
+ * @param feedbackOptions Options for enabling RAG and voice features
+ * @param exerciseDescription Optional description to help with config generation
+ * @returns Promise containing rep count and new rep segments
+ */
+export async function processExerciseReps(
+	poseHistory: Pose[],
+	exerciseName: string,
+	lastProcessedRepCount: number = 0,
+	feedbackOptions: FeedbackOptions = {},
+	exerciseDescription?: string
+): Promise<{ repCount: number; newRepSegments: RepSegment[]; configUsed: ExerciseConfig | null }> {
+	// Get or generate exercise configuration
+	const exerciseConfig = await getExerciseConfig(exerciseName, exerciseDescription);
+	
+	if (!exerciseConfig) {
+		console.error(`Could not get configuration for exercise: ${exerciseName}`);
+		return { repCount: 0, newRepSegments: [], configUsed: null };
+	}
+	
+	// Process reps using the configuration
+	const result = segmentReps(poseHistory, exerciseConfig, lastProcessedRepCount, feedbackOptions);
+	
+	return {
+		...result,
+		configUsed: exerciseConfig
+	};
+}
