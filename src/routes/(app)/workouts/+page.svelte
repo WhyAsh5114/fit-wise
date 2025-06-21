@@ -3,7 +3,8 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
-	import { VideoIcon, CameraIcon, PlayIcon, Square, UploadIcon } from 'lucide-svelte';
+	import { VideoIcon, CameraIcon, PlayIcon, Square, UploadIcon, TargetIcon } from 'lucide-svelte';
+	import { segmentReps, EXERCISE_CONFIGS, type Pose as PoseData, type ExerciseName } from '$lib/workout-utils';
 
 	let videoElement: HTMLVideoElement;
 	let canvasElement: HTMLCanvasElement;
@@ -19,6 +20,13 @@
 	let statusMessage = '';
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	let pose: any = null;
+
+	// Exercise tracking variables
+	let selectedExercise: ExerciseName = 'bicep_curl';
+	let poseHistory: PoseData[] = [];
+	let currentReps = 0;
+	let maxRepsEverSeen = 0; // Track the highest rep count to prevent decreases
+	let lastProcessedRepCount = 0; // Track how many reps we've already logged
 
 	// MediaPipe imports will be done dynamically in onMount
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -138,6 +146,21 @@
 
 		// Draw pose landmarks if detected
 		if (results.poseLandmarks) {
+			// Add pose to history for rep counting
+			poseHistory.push(results.poseLandmarks);
+
+			// Update rep count using the workout utils
+			if (poseHistory.length > 15) { // Need minimum history for reliable detection
+				const result = segmentReps(poseHistory, EXERCISE_CONFIGS[selectedExercise], lastProcessedRepCount);
+				// Only allow rep count to increase, never decrease
+				if (result.repCount > maxRepsEverSeen) {
+					maxRepsEverSeen = result.repCount;
+					currentReps = result.repCount;
+					lastProcessedRepCount = result.repCount; // Update the last processed count
+				}
+				// New rep segments are automatically processed and logged only for new reps
+			}
+
 			// Draw connections
 			drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
 				color: '#00FF00',
@@ -273,6 +296,17 @@
 			canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 		}
 	}
+
+	function resetRepCount() {
+		poseHistory = [];
+		currentReps = 0;
+		maxRepsEverSeen = 0;
+		lastProcessedRepCount = 0;
+	}
+
+	function onExerciseChange() {
+		resetRepCount();
+	}
 </script>
 
 <div class="container mx-auto p-6 space-y-6">
@@ -293,6 +327,21 @@
 				</CardTitle>
 			</CardHeader>
 			<CardContent class="space-y-4">
+				<!-- Exercise Selection -->
+				<div class="space-y-2">
+					<Label for="exercise-select">Exercise Type</Label>
+					<select 
+						id="exercise-select"
+						bind:value={selectedExercise}
+						onchange={onExerciseChange}
+						class="w-full px-3 py-2 border border-input bg-background rounded-md text-sm ring-offset-background focus:ring-2 focus:ring-ring focus:ring-offset-2"
+					>
+						<option value="bicep_curl">💪 Bicep Curls</option>
+						<option value="squat">🏋️ Squats</option>
+						<option value="push_up">⬇️ Push-ups</option>
+					</select>
+				</div>
+
 				<!-- Source Type Selection -->
 				<div class="space-y-2">
 					<Label for="source-select">Input Source</Label>
@@ -394,6 +443,22 @@
 						Stop Detection
 					</Button>
 				{/if}
+
+				<!-- Rep Counter -->
+				{#if isDetecting}
+					<div class="space-y-2 p-4 bg-muted rounded-lg">
+						<div class="flex items-center justify-between">
+							<h3 class="font-semibold">Rep Counter</h3>
+							<Button onclick={resetRepCount} size="sm" variant="outline">
+								Reset
+							</Button>
+						</div>
+						<div class="text-center">
+							<div class="text-3xl font-bold text-primary">{currentReps}</div>
+							<div class="text-sm text-muted-foreground">Repetitions</div>
+						</div>
+					</div>
+				{/if}
 			</CardContent>
 		</Card>
 
@@ -444,12 +509,54 @@
 				{#if isDetecting}
 					<div class="mt-4 flex items-center gap-2 text-sm text-green-600">
 						<div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-						AI pose detection active
+						AI pose detection active - {selectedExercise.replace('_', ' ')}
 					</div>
 				{/if}
 			</CardContent>
 		</Card>
 	</div>
+
+	<!-- Exercise Information -->
+	<Card>
+		<CardHeader>
+			<CardTitle class="flex items-center gap-2">
+				<TargetIcon class="h-5 w-5" />
+				Exercise: {selectedExercise.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
+			</CardTitle>
+		</CardHeader>
+		<CardContent>
+			<div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+				<div>
+					<h4 class="font-medium mb-2">How it works:</h4>
+					{#if selectedExercise === 'bicep_curl'}
+						<p class="text-muted-foreground">
+							Tracks your elbow angle to count bicep curl repetitions. 
+							Start with arms extended, curl up to flex, then lower back down for one rep.
+						</p>
+					{:else if selectedExercise === 'squat'}
+						<p class="text-muted-foreground">
+							Monitors your knee angle to detect squat movements. 
+							Start standing, squat down until thighs are parallel, then stand back up for one rep.
+						</p>
+					{:else if selectedExercise === 'push_up'}
+						<p class="text-muted-foreground">
+							Analyzes your arm angle during push-ups. 
+							Start in plank position, lower down by bending arms, then push back up for one rep.
+						</p>
+					{/if}
+				</div>
+				<div>
+					<h4 class="font-medium mb-2">Tips for best results:</h4>
+					<ul class="space-y-1 text-muted-foreground">
+						<li>• Position yourself sideways to the camera</li>
+						<li>• Ensure your full body is visible</li>
+						<li>• Maintain consistent lighting</li>
+						<li>• Perform controlled, deliberate movements</li>
+					</ul>
+				</div>
+			</div>
+		</CardContent>
+	</Card>
 
 	<!-- Instructions -->
 	<Card>
