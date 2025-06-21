@@ -8,9 +8,15 @@ importers:
 
   .:
     dependencies:
+      '@tanstack/svelte-query':
+        specifier: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3
+        version: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7)
       better-auth:
         specifier: ^1.2.10
         version: 1.2.10
+      lucide-svelte:
+        specifier: ^0.522.0
+        version: 0.522.0(svelte@5.34.7)
     devDependencies:
       '@eslint/compat':
         specifier: ^1.2.5
@@ -795,6 +801,16 @@ packages:
     peerDependencies:
       vite: ^5.2.0 || ^6
 
+  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5':
+    resolution: {tarball: https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5}
+    version: 5.75.7
+
+  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3':
+    resolution: {tarball: https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3}
+    version: 5.75.7
+    peerDependencies:
+      svelte: ^5.7.0
+
   '@tanstack/table-core@8.21.3':
     resolution: {integrity: sha512-ldZXEhOBb8Is7xLs01fR3YEc3DERiz5silj8tnGkFZytt1abEvl/GhUmCE0PMLaMPTa3Jk4HbKmRlHmu+gCftg==}
     engines: {node: '>=12'}
@@ -1524,6 +1540,11 @@ packages:
 
   lodash.merge@4.6.2:
     resolution: {integrity: sha512-0KpjqXRVvrYyCsX1swR/XTK0va6VQkQM6MNo7PqW77ByjAhoARA8EfrP1N4+KlKj8YS0ZUCtRT/YUuhyYDujIQ==}
+
+  lucide-svelte@0.522.0:
+    resolution: {integrity: sha512-5/Xrf9kx60WaqLqyEFvJVh3HEi6t05PFTNczYsMkH4AQPKr2BW7HctlgDYfUwScz0/OHVlHG+gfgklymMtK2UQ==}
+    peerDependencies:
+      svelte: ^3 || ^4 || ^5.0.0-next.42
 
   magic-string@0.30.17:
     resolution: {integrity: sha512-sNPKHvyjVf7gyjwS4xGTaW/mCnF8wnjtifKBEhxfZ7E/S8tQ0rssrwGNn6q8JH/ohItJfSQp9mBtQYuTlH5QnA==}
@@ -2718,6 +2739,13 @@ snapshots:
       tailwindcss: 4.1.10
       vite: 6.3.5(@types/node@24.0.3)(jiti@2.4.2)(lightningcss@1.30.1)
 
+  '@tanstack/query-core@https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5': {}
+
+  '@tanstack/svelte-query@https://pkg.pr.new/@tanstack/svelte-query@746b9c5d83e901deb3a5ca7012a4b4e2b617c5e3(svelte@5.34.7)':
+    dependencies:
+      '@tanstack/query-core': https://pkg.pr.new/TanStack/query/@tanstack/query-core@746b9c5
+      svelte: 5.34.7
+
   '@tanstack/table-core@8.21.3': {}
 
   '@types/cookie@0.6.0': {}
@@ -3513,6 +3541,10 @@ snapshots:
   lodash.isplainobject@4.0.6: {}
 
   lodash.merge@4.6.2: {}
+
+  lucide-svelte@0.522.0(svelte@5.34.7):
+    dependencies:
+      svelte: 5.34.7
 
   magic-string@0.30.17:
     dependencies:
