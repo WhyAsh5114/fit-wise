@@ -1,4 +1,20 @@
-# FitWise 🏋️‍♂️🤖
+# FitW## 🚀 Features
+
+- 🧠 **Agentic AI**: Understands your fitness goals and builds adaptive routines.
+- 🎯 **Personalized Workouts**: Tailors routines based on your body, experience level, and objectives.
+- 📚 **RAG-Enhanced Knowledge**: Leverages embeddings of the latest exercise science and anatomy research to provide evidence-based recommendations.
+- 📷 **MediaPipe Pose Detection**: Tracks your form live via camera.
+- ✅ **Real-Time Feedback**: Get instant corrections and guidance on your posture and reps.
+- 🔊 **Voice Feedback**: Optional spoken feedback in Bengali for hands-free workout guidance.
+- ⚡ **Performance Modes**: Choose between fast text-only feedback or enhanced feedback with reference lookup and voice.
+- �️ **Configurable AI Features**: Toggle RAG (reference database) and voice feedback independently for optimal performance.
+- 🕹️ **Simple UI**: Designed to be distraction-free and easy to navigate.
+
+### AI Feature Options
+- **Fast Mode** (Default): Quick text feedback for immediate responsiveness
+- **Enhanced Reference**: Uses exercise database for more detailed, evidence-based feedback
+- **Voice Feedback**: Spoken feedback in Bengali for hands-free operation
+- **Combined Mode**: Both enhanced reference and voice for comprehensive feedback♂️🤖
 
 **FitWise** is an intelligent workout assistant that uses **Agentic AI** and **MediaPipe pose detection** to generate customized workout routines and provide **real-time form correction** — tailored for fitness enthusiasts, beginners, and everyone in between.
 
@@ -38,10 +54,16 @@
 ## 📦 Installation (WIP)
 
 ```bash
-git clone https://github.com/yourusername/fitwise
+git clone https://github.com/WhyAsh5114/fit-wise
 cd fitwise
 pnpm install
 pnpm dev
+
+docker run -p 6333:6333 \
+    -v $(pwd)/qdrant/storage \
+    qdrant/qdrant
+
+
 ````
 
 > ⚠️ Requires a webcam and modern browser for pose detection.

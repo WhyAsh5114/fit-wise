@@ -10,7 +10,10 @@ export const WorkoutFeedbackInputSchema = z.object({
 		max: z.number()
 	}),
 	averageAngle: z.number(),
-	rangeOfMotion: z.number()
+	rangeOfMotion: z.number(),
+	// Optional feature flags
+	enableRAG: z.boolean().optional().default(false),
+	enableVoice: z.boolean().optional().default(false)
 });
 
 // Output schema for workout feedback response

@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -19,6 +18,7 @@ model User {
   isAnonymous   Boolean?
   sessions      Session[]
   accounts      Account[]
+  workouts      Workout[]
 
   @@unique([email])
   @@map("user")
@@ -67,4 +67,46 @@ model Verification {
   updatedAt  DateTime?
 
   @@map("verification")
+}
+
+model Workout {
+  id              String            @id @default(cuid())
+  name            String
+  description     String
+  totalDuration   Int               // Duration in minutes
+  frequency       String
+  fitnessLevel    FitnessLevel
+  goals           String
+  equipment       String[]          // Array of equipment names
+  userId          String
+  user            User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  exercises       WorkoutExercise[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  @@map("workout")
+}
+
+model WorkoutExercise {
+  id          String  @id @default(cuid())
+  name        String
+  sets        Int
+  reps        String  // Can be a range like "8-12"
+  rest        String  // Rest time between sets
+  equipment   String? // Required equipment for this exercise
+  notes       String? // Form tips or modifications
+  workoutId   String
+  workout     Workout @relation(fields: [workoutId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("workout_exercise")
+}
+
+enum FitnessLevel {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+
+  @@map("fitness_level")
 }

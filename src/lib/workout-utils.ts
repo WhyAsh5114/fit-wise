@@ -49,6 +49,11 @@ export type RepSegment = {
 	duration: number;
 };
 
+export type FeedbackOptions = {
+	enableRAG?: boolean;
+	enableVoice?: boolean;
+};
+
 /**
  * Simple moving average smoothing
  */
@@ -117,9 +122,15 @@ function detectPeaksAndValleys(values: number[], minDistance: number = 5, minHei
  * @param poseHistory An array of poses from MediaPipe.
  * @param exerciseConfig The configuration for the exercise.
  * @param lastProcessedRepCount The number of reps that were already processed (to avoid duplicate logging).
+ * @param feedbackOptions Options for enabling RAG and voice features.
  * @returns An object containing the total number of repetitions detected and any new rep segments.
  */
-export function segmentReps(poseHistory: Pose[], exerciseConfig: ExerciseConfig, lastProcessedRepCount: number = 0): { 
+export function segmentReps(
+	poseHistory: Pose[], 
+	exerciseConfig: ExerciseConfig, 
+	lastProcessedRepCount: number = 0,
+	feedbackOptions: FeedbackOptions = {}
+): { 
 	repCount: number; 
 	newRepSegments: RepSegment[];
 } {
@@ -242,7 +253,7 @@ export function segmentReps(poseHistory: Pose[], exerciseConfig: ExerciseConfig,
 						newRepSegments.push(repSegment);
 						
 						// Process the rep segment (console log and AI feedback)
-						processRepSegment(repSegment).catch(error => {
+						processRepSegment(repSegment, feedbackOptions).catch(error => {
 							console.error('Error processing rep segment:', error);
 						});
 					}
@@ -297,7 +308,7 @@ export type RepAnalysis = {
 /**
  * Process a completed rep segment and send angle data to analysis
  */
-async function processRepSegment(repSegment: RepSegment): Promise<void> {
+async function processRepSegment(repSegment: RepSegment, feedbackOptions: FeedbackOptions = {}): Promise<void> {
 	if (repSegment.angles.length === 0) {
 		console.log(`Rep #${repSegment.repNumber} - No angle data available`);
 		return;
@@ -330,7 +341,11 @@ async function processRepSegment(repSegment: RepSegment): Promise<void> {
 			headers: {
 				'Content-Type': 'application/json'
 			},
-			body: JSON.stringify(repAnalysis)
+			body: JSON.stringify({
+				...repAnalysis,
+				enableRAG: feedbackOptions.enableRAG || false,
+				enableVoice: feedbackOptions.enableVoice || false
+			})
 		});
 
 		if (response.ok) {
@@ -338,6 +353,7 @@ async function processRepSegment(repSegment: RepSegment): Promise<void> {
 			const reader = response.body?.getReader();
 			const decoder = new TextDecoder();
 			let feedback: { feedback: string; score: number; classification: string } | null = null;
+			let partialFeedback = '';
 
 			if (reader) {
 				let buffer = '';
@@ -368,8 +384,20 @@ async function processRepSegment(repSegment: RepSegment): Promise<void> {
 											duration: 5000
 										});
 									}
-								} else if (data.type === 'audio') {
-									// Play the audio
+								} else if (data.type === 'partial_feedback') {
+									// Show partial feedback immediately for better responsiveness
+									partialFeedback = data.data;
+									
+									if (typeof window !== 'undefined') {
+										const { toast } = await import('svelte-sonner');
+										
+										toast.loading(`Rep ${repAnalysis.repNumber} - ${partialFeedback}`, {
+											id: `rep-${repAnalysis.repNumber}`,
+											duration: 2000
+										});
+									}
+								} else if (data.type === 'audio' && feedbackOptions.enableVoice) {
+									// Play the audio only if voice is enabled
 									if (typeof window !== 'undefined') {
 										const audioBase64 = data.data;
 										const audioBlob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], { type: 'audio/mpeg' });

@@ -11,12 +11,18 @@
 	const isLoggedInQuery = createQuery(() => ({
 		queryKey: ['session'],
 		queryFn: async () => {
+			console.log('getting session');
 			const session = await authClient.getSession();
 			if (session.data?.user) {
 				toast.info("You're already signed in");
 				goto(page.url.searchParams.get('redirect') ?? '/dashboard');
 				return true;
 			}
+			return false;
+		},
+		throwOnError: (error) => {
+			toast.error('An error occurred while checking session status');
+			console.error('Error checking session:', error);
 			return false;
 		}
 	}));

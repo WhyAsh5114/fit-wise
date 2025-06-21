@@ -3,6 +3,7 @@
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
+	import { Switch } from '$lib/components/ui/switch';
 	import { VideoIcon, CameraIcon, PlayIcon, Square, UploadIcon, TargetIcon } from 'lucide-svelte';
 	import { segmentReps, EXERCISE_CONFIGS, type Pose as PoseData, type ExerciseName } from '$lib/workout-utils';
 
@@ -27,6 +28,10 @@
 	let currentReps = 0;
 	let maxRepsEverSeen = 0; // Track the highest rep count to prevent decreases
 	let lastProcessedRepCount = 0; // Track how many reps we've already logged
+
+	// Feature toggle variables
+	let enableRAG = false;
+	let enableVoice = false;
 
 	// MediaPipe imports will be done dynamically in onMount
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -148,18 +153,20 @@
 		if (results.poseLandmarks) {
 			// Add pose to history for rep counting
 			poseHistory.push(results.poseLandmarks);
-
-			// Update rep count using the workout utils
-			if (poseHistory.length > 15) { // Need minimum history for reliable detection
-				const result = segmentReps(poseHistory, EXERCISE_CONFIGS[selectedExercise], lastProcessedRepCount);
-				// Only allow rep count to increase, never decrease
-				if (result.repCount > maxRepsEverSeen) {
-					maxRepsEverSeen = result.repCount;
-					currentReps = result.repCount;
-					lastProcessedRepCount = result.repCount; // Update the last processed count
-				}
-				// New rep segments are automatically processed and logged only for new reps
+		// Update rep count using the workout utils
+		if (poseHistory.length > 15) { // Need minimum history for reliable detection
+			const result = segmentReps(poseHistory, EXERCISE_CONFIGS[selectedExercise], lastProcessedRepCount, {
+				enableRAG,
+				enableVoice
+			});
+			// Only allow rep count to increase, never decrease
+			if (result.repCount > maxRepsEverSeen) {
+				maxRepsEverSeen = result.repCount;
+				currentReps = result.repCount;
+				lastProcessedRepCount = result.repCount; // Update the last processed count
 			}
+			// New rep segments are automatically processed and logged only for new reps
+		}
 
 			// Draw connections
 			drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
@@ -459,6 +466,52 @@
 						</div>
 					</div>
 				{/if}
+
+				<!-- AI Features -->
+				<div class="space-y-3 p-4 bg-muted rounded-lg">
+					<h3 class="font-semibold text-sm">AI Features</h3>
+					
+					<div class="space-y-3">
+						<!-- RAG Toggle -->
+						<div class="flex items-center justify-between">
+							<div class="space-y-1">
+								<Label for="rag-toggle" class="text-sm font-medium">
+									Enhanced Reference
+								</Label>
+								<p class="text-xs text-muted-foreground">
+									Uses exercise database for better feedback
+								</p>
+							</div>
+							<Switch id="rag-toggle" bind:checked={enableRAG} />
+						</div>
+
+						<!-- Voice Toggle -->
+						<div class="flex items-center justify-between">
+							<div class="space-y-1">
+								<Label for="voice-toggle" class="text-sm font-medium">
+									Voice Feedback
+								</Label>
+								<p class="text-xs text-muted-foreground">
+									Spoken feedback in Bengali
+								</p>
+							</div>
+							<Switch id="voice-toggle" bind:checked={enableVoice} />
+						</div>
+
+						{#if enableRAG || enableVoice}
+							<div class="text-xs text-orange-700 dark:text-orange-300 bg-orange-50 dark:bg-orange-950 p-2 rounded border border-orange-200 dark:border-orange-800">
+								⚠️ Enhanced features enabled - responses may be slower
+								{#if enableRAG && enableVoice}
+									<br/>📚 Reference lookup + 🔊 Voice generation
+								{:else if enableRAG}
+									<br/>📚 Reference lookup enabled
+								{:else if enableVoice}
+									<br/>🔊 Voice generation enabled
+								{/if}
+							</div>
+						{/if}
+					</div>
+				</div>
 			</CardContent>
 		</Card>
 
@@ -507,9 +560,26 @@
 
 				<!-- Status indicator -->
 				{#if isDetecting}
-					<div class="mt-4 flex items-center gap-2 text-sm text-green-600">
-						<div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-						AI pose detection active - {selectedExercise.replace('_', ' ')}
+					<div class="mt-4 space-y-2">
+						<div class="flex items-center gap-2 text-sm text-green-600">
+							<div class="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+							AI pose detection active - {selectedExercise.replace('_', ' ')}
+						</div>
+						
+						{#if enableRAG || enableVoice}
+							<div class="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+								<div class="w-1.5 h-1.5 bg-blue-500 rounded-full"></div>
+								Enhanced feedback: 
+								{#if enableRAG}📚 Reference{/if}
+								{#if enableRAG && enableVoice} + {/if}
+								{#if enableVoice}🔊 Voice{/if}
+							</div>
+						{:else}
+							<div class="flex items-center gap-2 text-xs text-gray-500">
+								<div class="w-1.5 h-1.5 bg-gray-400 rounded-full"></div>
+								Fast mode: Text feedback only
+							</div>
+						{/if}
 					</div>
 				{/if}
 			</CardContent>
