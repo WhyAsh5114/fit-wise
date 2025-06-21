@@ -24,12 +24,11 @@ The LLM analyzes the exercise and determines:
 
 ### 3. Configuration Generation
 Based on the analysis, the AI generates:
-- **Joint Selection**: Which MediaPipe landmarks to track
-- **Tracking Axes**: Y (vertical) and/or X (horizontal) movement
-- **Signal Inversion**: Whether to invert coordinates
+- **Angle Configurations**: Which joint angle combinations to track
+- **Signal Inversion**: Whether to invert coordinates for proper peak detection
 - **Initial Direction**: Starting position (up/down)
 - **Peak Distance**: Minimum frames between repetition peaks
-- **Angle Points**: Three points for angle calculations
+- **Bilateral Tracking**: Left and right side angle measurements when applicable
 
 ## Usage Examples
 
@@ -72,12 +71,19 @@ Visit `/exercise-config` to test the system with a visual interface.
   "name": "shoulder_press",
   "initialDirection": "down",
   "minPeakDistance": 10,
-  "joints": [{
-    "joint": 15,  // LEFT_WRIST
-    "trackY": true,
-    "inverted": true,
-    "anglePoints": [11, 13, 15]  // SHOULDER -> ELBOW -> WRIST
-  }]
+  "inverted": true,
+  "anglePoints": [
+    {
+      "name": "left_elbow",
+      "points": [11, 13, 15],
+      "weight": 1.0
+    },
+    {
+      "name": "right_elbow", 
+      "points": [12, 14, 16],
+      "weight": 1.0
+    }
+  ]
 }
 ```
 
@@ -87,13 +93,19 @@ Visit `/exercise-config` to test the system with a visual interface.
   "name": "lateral_raise", 
   "initialDirection": "down",
   "minPeakDistance": 8,
-  "joints": [{
-    "joint": 15,  // LEFT_WRIST
-    "trackY": true,
-    "trackX": true,
-    "inverted": true,
-    "anglePoints": [11, 13, 15]
-  }]
+  "inverted": true,
+  "anglePoints": [
+    {
+      "name": "left_shoulder",
+      "points": [11, 13, 15],
+      "weight": 1.0
+    },
+    {
+      "name": "right_shoulder",
+      "points": [12, 14, 16], 
+      "weight": 1.0
+    }
+  ]
 }
 ```
 

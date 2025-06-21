@@ -42,7 +42,14 @@ async function testGenerateAndSave(exercise) {
 		console.log(`💪 Primary Muscles: ${generateData.analysis.primaryMuscles.join(', ')}`);
 		console.log(`🔄 Movement Pattern: ${generateData.analysis.movementPattern}`);
 		console.log(`📍 Config Name: ${generateData.config.name}`);
-		console.log(`🎯 Joints Tracked: ${generateData.config.joints.length}`);
+		console.log(`🎯 Angle Configurations: ${generateData.config.anglePoints?.length || 0}`);
+		
+		if (generateData.config.anglePoints && generateData.config.anglePoints.length > 0) {
+			console.log(`📐 Angles Tracked:`);
+			generateData.config.anglePoints.forEach((angleConfig, i) => {
+				console.log(`     ${i + 1}. ${angleConfig.name}: [${angleConfig.points.join(', ')}] (weight: ${angleConfig.weight || 1.0})`);
+			});
+		}
 
 		// Step 2: Save the config to database
 		console.log('\n💾 Step 2: Saving exercise config to database...');

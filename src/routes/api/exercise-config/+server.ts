@@ -62,17 +62,18 @@ const LANDMARK_INDICES = {
 };
 
 // Schema for exercise configuration generation
+const AngleConfigSchema = z.object({
+	name: z.string().describe('Name for this angle (e.g., "left_elbow", "right_knee")'),
+	points: z.array(z.number()).length(3).describe('Three joint indices for angle calculation [point1, vertex, point3]'),
+	weight: z.number().optional().describe('Weight for this angle in the composite signal (default 1.0)')
+});
+
 const ExerciseConfigSchema = z.object({
 	name: z.string().describe('Exercise name in snake_case format (e.g., bicep_curl, shoulder_press)'),
 	initialDirection: z.enum(['up', 'down']).describe('The starting direction of the exercise movement'),
 	minPeakDistance: z.number().min(5).max(20).describe('Minimum distance between peaks to count as a rep (5-20 frames)'),
-	joints: z.array(z.object({
-		joint: z.number().describe('MediaPipe landmark index for the joint to track'),
-		trackY: z.boolean().describe('Whether to track Y position (up/down movement)'),
-		trackX: z.boolean().optional().describe('Whether to track X position (left/right movement)'),
-		inverted: z.boolean().optional().describe('Whether to invert the signal (for exercises where down is actually up in screen coords)'),
-		anglePoints: z.array(z.number()).length(3).optional().describe('Three joint indices for angle calculation [point1, vertex, point3]')
-	})).min(1).describe('Array of joint configurations for tracking movement')
+	inverted: z.boolean().optional().describe('Whether to invert the composite angle signal (true when lower angles = exercise "up" position)'),
+	anglePoints: z.array(AngleConfigSchema).min(1).describe('Array of angle configurations for tracking movement. Include both left and right sides when possible.')
 });
 
 const ExerciseAnalysisSchema = z.object({
@@ -96,52 +97,53 @@ export const POST: RequestHandler = async ({ request }) => {
 
 		console.log(`Exercise Config API: Generating config for "${exerciseName}"`);
 
-		const systemPrompt = `You are an expert in biomechanics and exercise analysis. Your task is to generate MediaPipe pose tracking configurations for exercises.
+		const systemPrompt = `You are an expert in biomechanics and exercise analysis. Your task is to generate MediaPipe pose tracking configurations for exercises based on ANGLE MEASUREMENTS ONLY.
 
 AVAILABLE LANDMARK INDICES:
 ${Object.entries(LANDMARK_INDICES).map(([name, index]) => `${name}: ${index}`).join('\n')}
 
 EXERCISE ANALYSIS GUIDELINES:
 
-1. **Joint Selection**: Choose the most representative joint for tracking the exercise movement
-   - For arm exercises: typically wrist or elbow
-   - For leg exercises: typically hip, knee, or ankle
-   - For full body: choose the joint with the most distinct movement pattern
+1. **Angle-Based Tracking**: All exercises are tracked using joint angles, not individual joint positions
+   - Focus on the joints that flex/extend during the exercise
+   - Common patterns:
+     - Elbow angles: [shoulder, elbow, wrist]
+     - Knee angles: [hip, knee, ankle]
+     - Shoulder angles: [spine/torso, shoulder, elbow]
+     - Hip angles: [torso, hip, knee]
 
-2. **Movement Direction**:
-   - trackY: true for vertical movements (up/down)
-   - trackX: true for horizontal movements (left/right)
-   - Most exercises primarily use trackY
+2. **Bilateral Tracking**: Always include both left and right sides when possible
+   - Left elbow: [LEFT_SHOULDER, LEFT_ELBOW, LEFT_WRIST]
+   - Right elbow: [RIGHT_SHOULDER, RIGHT_ELBOW, RIGHT_WRIST]
+   - Left knee: [LEFT_HIP, LEFT_KNEE, LEFT_ANKLE]
+   - Right knee: [RIGHT_HIP, RIGHT_KNEE, RIGHT_ANKLE]
 
-3. **Inverted Signal**:
-   - Set to true when screen coordinates are opposite to exercise movement
-   - Example: bicep curl (screen down = exercise up) should be inverted
-   - Example: squat (screen down = exercise down) should NOT be inverted
+3. **Signal Inversion**:
+   - Set inverted=true when LOWER angles represent the exercise "up" position
+   - Examples:
+     - Bicep curl: inverted=true (smaller elbow angle = curled up)
+     - Squat: inverted=true (smaller knee angle = squatted down)
+     - Push-up: inverted=true (smaller elbow angle = lowered down)
+   - Most exercises will need inverted=true since flexion (smaller angles) is usually the "working" position
 
 4. **Initial Direction**:
-   - 'up': Exercise starts in the extended/top position
-   - 'down': Exercise starts in the contracted/bottom position
+   - 'up': Exercise starts in the extended/top position (larger angles)
+   - 'down': Exercise starts in the flexed/bottom position (smaller angles)
 
-5. **Angle Points**:
-   - Always provide 3 points: [point1, vertex, point3]
-   - Vertex is the joint where the angle is measured
-   - Common patterns:
-     - Elbow angle: [shoulder, elbow, wrist]
-     - Knee angle: [hip, knee, ankle]
-     - Shoulder angle: [torso_point, shoulder, elbow]
-
-6. **Min Peak Distance**:
+5. **Min Peak Distance**:
    - Faster exercises: 5-8 frames
    - Moderate exercises: 8-12 frames  
    - Slower exercises: 12-20 frames
 
-EXAMPLE EXERCISES:
-- Bicep Curl: Track wrist (15), Y-axis, inverted, elbow angle [11,13,15]
-- Squat: Track hip (23), Y-axis, not inverted, knee angle [23,25,27]
-- Push-up: Track shoulder (11), Y-axis, not inverted, elbow angle [11,13,15]
-- Overhead Press: Track wrist (15), Y-axis, inverted, shoulder angle [11,13,15]
+6. **Angle Naming**: Use descriptive names like "left_elbow", "right_knee", "left_shoulder", etc.
 
-Analyze the exercise and generate an appropriate configuration.`;
+EXAMPLE CONFIGURATIONS:
+- Bicep Curl: Track left_elbow + right_elbow angles, inverted=true, initialDirection='down'
+- Squat: Track left_knee + right_knee angles, inverted=true, initialDirection='up'  
+- Push-up: Track left_elbow + right_elbow angles, inverted=true, initialDirection='up'
+- Overhead Press: Track left_elbow + right_elbow angles, inverted=true, initialDirection='down'
+
+Analyze the exercise and generate an angle-based configuration with bilateral tracking when possible.`;
 
 		const userPrompt = `Exercise: ${exerciseName}
 ${exerciseDescription ? `Description: ${exerciseDescription}` : ''}

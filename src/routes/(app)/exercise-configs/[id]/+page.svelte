@@ -25,12 +25,11 @@
 		name: string;
 		initialDirection: 'up' | 'down';
 		minPeakDistance: number;
-		joints: Array<{
-			joint: number;
-			trackY: boolean;
-			trackX?: boolean;
-			inverted?: boolean;
-			anglePoints?: [number, number, number];
+		inverted?: boolean;
+		anglePoints: Array<{
+			name: string;
+			points: [number, number, number];
+			weight?: number;
 		}>;
 	}
 
@@ -129,12 +128,11 @@
 			exerciseName: config.name,
 			initialDirection: config.initialDirection,
 			minPeakDistance: config.minPeakDistance,
-			joints: config.joints?.map((joint) => ({
-				joint: joint.joint,
-				trackY: joint.trackY,
-				trackX: joint.trackX || false,
-				inverted: joint.inverted || false,
-				...(joint.anglePoints && { anglePoints: joint.anglePoints })
+			inverted: config.inverted,
+			anglePoints: config.anglePoints?.map((angleConfig) => ({
+				name: angleConfig.name,
+				points: angleConfig.points,
+				weight: angleConfig.weight || 1.0
 			})) || []
 		};
 		
@@ -169,7 +167,8 @@
 				name: config.name || '',
 				initialDirection: config.initialDirection || 'up',
 				minPeakDistance: config.minPeakDistance || 8,
-				joints: config.joints || []
+				inverted: config.inverted,
+				anglePoints: config.anglePoints || []
 			};
 		} catch {
 			return null;
@@ -358,40 +357,42 @@
 												{details.minPeakDistance} frames
 											</span>
 										</div>
+
+										{#if details.inverted !== undefined}
+											<div class="flex items-center justify-between rounded-lg border p-3">
+												<div>
+													<p class="text-sm font-medium">Signal Inversion</p>
+													<p class="text-muted-foreground text-xs">Angle signal processing</p>
+												</div>
+												<Badge variant={details.inverted ? 'secondary' : 'outline'}>
+													{details.inverted ? 'Inverted' : 'Normal'}
+												</Badge>
+											</div>
+										{/if}
 									</div>
 
-									<!-- Joint Configuration -->
-									{#if details.joints.length > 0}
+									<!-- Angle Configuration -->
+									{#if details.anglePoints.length > 0}
 										<Separator />
 										<div class="space-y-3">
-											<h4 class="text-sm font-medium">Joint Tracking</h4>
-											{#each details.joints as joint, i (i)}
+											<h4 class="text-sm font-medium">Angle Tracking</h4>
+											{#each details.anglePoints as angleConfig, i (i)}
 												<div class="rounded-lg border p-3 space-y-2">
 													<div class="flex items-center justify-between">
-														<span class="text-sm font-medium">{getJointName(joint.joint)}</span>
+														<span class="text-sm font-medium capitalize">{angleConfig.name.replace('_', ' ')}</span>
 														<Badge variant="outline" class="font-mono text-xs">
-															Index {joint.joint}
+															Weight: {angleConfig.weight || 1.0}
 														</Badge>
 													</div>
-													<div class="grid grid-cols-2 gap-2 text-xs">
+													<div class="text-xs space-y-1">
 														<div class="flex items-center gap-1">
-															<span class="w-2 h-2 rounded-full {joint.trackY ? 'bg-green-500' : 'bg-gray-300'}"></span>
-															Track Y: {joint.trackY ? 'Yes' : 'No'}
+															<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+															Angle Points: [{angleConfig.points.map(p => getJointName(p)).join(' → ')}]
 														</div>
 														<div class="flex items-center gap-1">
-															<span class="w-2 h-2 rounded-full {joint.trackX ? 'bg-green-500' : 'bg-gray-300'}"></span>
-															Track X: {joint.trackX ? 'Yes' : 'No'}
+															<span class="w-2 h-2 rounded-full bg-purple-500"></span>
+															Indices: [{angleConfig.points.join(', ')}]
 														</div>
-														<div class="flex items-center gap-1">
-															<span class="w-2 h-2 rounded-full {joint.inverted ? 'bg-yellow-500' : 'bg-gray-300'}"></span>
-															Inverted: {joint.inverted ? 'Yes' : 'No'}
-														</div>
-														{#if joint.anglePoints}
-															<div class="flex items-center gap-1">
-																<span class="w-2 h-2 rounded-full bg-blue-500"></span>
-																Angle: [{joint.anglePoints.join(', ')}]
-															</div>
-														{/if}
 													</div>
 												</div>
 											{/each}

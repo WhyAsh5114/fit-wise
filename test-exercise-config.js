@@ -49,15 +49,15 @@ async function testExerciseConfig(exercise) {
 			console.log(`💪 Primary Muscles: ${data.analysis.primaryMuscles.join(', ')}`);
 			console.log(`🔄 Movement Pattern: ${data.analysis.movementPattern}`);
 			console.log(`⚙️ Config Details:`);
-			console.log(`   - Tracks Joint: ${data.config.joints[0].joint}`);
-			console.log(`   - Track Y: ${data.config.joints[0].trackY}`);
-			console.log(`   - Track X: ${data.config.joints[0].trackX || false}`);
-			console.log(`   - Inverted: ${data.config.joints[0].inverted || false}`);
 			console.log(`   - Initial Direction: ${data.config.initialDirection}`);
 			console.log(`   - Min Peak Distance: ${data.config.minPeakDistance}`);
+			console.log(`   - Signal Inverted: ${data.config.inverted || false}`);
 			
-			if (data.config.joints[0].anglePoints) {
-				console.log(`   - Angle Points: [${data.config.joints[0].anglePoints.join(', ')}]`);
+			if (data.config.anglePoints && data.config.anglePoints.length > 0) {
+				console.log(`   - Angle Configurations:`);
+				data.config.anglePoints.forEach((angleConfig, i) => {
+					console.log(`     ${i + 1}. ${angleConfig.name}: [${angleConfig.points.join(', ')}] (weight: ${angleConfig.weight || 1.0})`);
+				});
 			}
 		} else {
 			console.log('❌ Config Generation Failed:', data.error);

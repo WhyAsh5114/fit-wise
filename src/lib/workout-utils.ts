@@ -9,19 +9,18 @@ export type Pose = Landmark[];
 
 export type ExerciseName = string; // Now supports any exercise name
 
-type JointConfig = {
-	joint: number;
-	trackY: boolean; // Track Y position (up/down movement)
-	trackX?: boolean; // Track X position (left/right movement)
-	inverted?: boolean; // Invert the signal (for exercises where down is actually up in screen coords)
-	anglePoints?: [number, number, number]; // Three joint indices for angle calculation [point1, vertex, point3]
+type AngleConfig = {
+	name: string; // e.g., "left_elbow", "right_elbow"
+	points: [number, number, number]; // Three joint indices for angle calculation [point1, vertex, point3]
+	weight?: number; // Weight for this angle in the composite signal (default 1.0)
 };
 
 export type ExerciseConfig = {
 	name: ExerciseName;
-	joints: JointConfig[];
+	anglePoints: AngleConfig[]; // Multiple angle configurations (left/right when possible)
 	minPeakDistance: number; // Minimum distance between peaks to count as a rep
 	initialDirection: 'up' | 'down';
+	inverted?: boolean; // Invert the composite signal if needed
 };
 
 export type RepetitionState = {
@@ -74,40 +73,76 @@ function smoothData(values: number[], windowSize: number = 3): number[] {
 }
 
 /**
- * Simple peak detection for joint movement with noise filtering
+ * Create a composite movement signal from multiple angles
  */
-function detectPeaksAndValleys(values: number[], minDistance: number = 5, minHeight: number = 0.01): { peaks: number[], valleys: number[] } {
+function createCompositeAngleSignal(pose: Pose, angleConfigs: AngleConfig[]): number {
+	let compositeValue = 0;
+	let totalWeight = 0;
+	
+	for (const angleConfig of angleConfigs) {
+		const [p1, p2, p3] = angleConfig.points;
+		if (!pose[p1] || !pose[p2] || !pose[p3]) continue;
+		
+		const weight = angleConfig.weight || 1.0;
+		const angle = calculateAngle(pose[p1], pose[p2], pose[p3]);
+		
+		compositeValue += angle * weight;
+		totalWeight += weight;
+	}
+	
+	return totalWeight > 0 ? compositeValue / totalWeight : 0;
+}
+
+/**
+ * Advanced peak/valley detection with adaptive thresholds and trend analysis
+ */
+function detectPeaksAndValleysAdvanced(
+	values: number[], 
+	minDistance: number = 5, 
+	prominenceThreshold: number = 0.15
+): { peaks: number[], valleys: number[] } {
 	const peaks: number[] = [];
 	const valleys: number[] = [];
 	
-	if (values.length < 3) return { peaks, valleys };
+	if (values.length < 5) return { peaks, valleys };
 	
-	// First, smooth the data to reduce noise
-	const smoothed = smoothData(values, 5);
+	// Apply stronger smoothing for noise reduction
+	const smoothed = smoothData(values, 7);
 	
-	// Calculate the range of movement to set dynamic threshold
+	// Calculate adaptive thresholds
 	const min = Math.min(...smoothed);
 	const max = Math.max(...smoothed);
 	const range = max - min;
-	const dynamicMinHeight = range * 0.1; // Peak must be at least 10% of total range
-	const actualMinHeight = Math.max(minHeight, dynamicMinHeight);
+	const dynamicProminence = range * prominenceThreshold;
 	
-	for (let i = 1; i < smoothed.length - 1; i++) {
-		const prev = smoothed[i - 1];
-		const curr = smoothed[i];
-		const next = smoothed[i + 1];
+	// Use a larger window for trend analysis
+	const trendWindow = Math.max(3, Math.floor(minDistance / 2));
+	
+	for (let i = trendWindow; i < smoothed.length - trendWindow; i++) {
+		const current = smoothed[i];
 		
-		// Peak detection with height threshold
-		if (curr > prev && curr > next && curr - min > actualMinHeight) {
-			// Check minimum distance from last peak
+		// Check if current point is a local maximum
+		let isPeak = true;
+		let isValley = true;
+		
+		// Compare with points in the trend window
+		for (let j = -trendWindow; j <= trendWindow; j++) {
+			if (j === 0) continue;
+			const compareValue = smoothed[i + j];
+			
+			if (current <= compareValue) isPeak = false;
+			if (current >= compareValue) isValley = false;
+		}
+		
+		// Peak detection with prominence check
+		if (isPeak && current - min > dynamicProminence) {
 			if (peaks.length === 0 || i - peaks[peaks.length - 1] >= minDistance) {
 				peaks.push(i);
 			}
 		}
 		
-		// Valley detection with height threshold
-		if (curr < prev && curr < next && max - curr > actualMinHeight) {
-			// Check minimum distance from last valley
+		// Valley detection with prominence check
+		if (isValley && max - current > dynamicProminence) {
 			if (valleys.length === 0 || i - valleys[valleys.length - 1] >= minDistance) {
 				valleys.push(i);
 			}
@@ -118,7 +153,7 @@ function detectPeaksAndValleys(values: number[], minDistance: number = 5, minHei
 }
 
 /**
- * Processes a history of poses to count repetitions using peak/valley detection.
+ * Processes a history of poses to count repetitions using comprehensive multi-joint tracking.
  * @param poseHistory An array of poses from MediaPipe.
  * @param exerciseConfig The configuration for the exercise.
  * @param lastProcessedRepCount The number of reps that were already processed (to avoid duplicate logging).
@@ -134,60 +169,48 @@ export function segmentReps(
 	repCount: number; 
 	newRepSegments: RepSegment[];
 } {
-	if (!poseHistory || poseHistory.length < 15) { // Need more history for reliable detection
+	if (!poseHistory || poseHistory.length < 20) { // Increased minimum for better reliability
 		return { repCount: 0, newRepSegments: [] };
 	}
 
-	// Extract the primary joint movement
-	const primaryJoint = exerciseConfig.joints[0];
+	// Create composite angle signal from all specified angle configurations
 	const values: number[] = [];
 	const angleDataHistory: AngleData[] = [];
 	
 	for (let i = 0; i < poseHistory.length; i++) {
 		const pose = poseHistory[i];
-		if (!pose || pose.length === 0 || !pose[primaryJoint.joint]) continue;
+		if (!pose || pose.length === 0) continue;
 		
-		let value = 0;
-		if (primaryJoint.trackY) {
-			value += pose[primaryJoint.joint].y;
-		}
-		if (primaryJoint.trackX) {
-			value += pose[primaryJoint.joint].x;
-		}
+		// Create composite signal from all angle configurations
+		const compositeValue = createCompositeAngleSignal(pose, exerciseConfig.anglePoints);
 		
-		// Invert if needed (useful for exercises where screen down = exercise up)
-		if (primaryJoint.inverted) {
-			value = -value;
-		}
+		// Apply inversion if specified
+		const finalValue = exerciseConfig.inverted ? -compositeValue : compositeValue;
+		values.push(finalValue);
 		
-		values.push(value);
-		
-		// Calculate angle if angle points are configured
-		if (primaryJoint.anglePoints && pose[primaryJoint.anglePoints[0]] && 
-			pose[primaryJoint.anglePoints[1]] && pose[primaryJoint.anglePoints[2]]) {
-			
-			const angle = calculateAngle(
-				pose[primaryJoint.anglePoints[0]],
-				pose[primaryJoint.anglePoints[1]], 
-				pose[primaryJoint.anglePoints[2]]
-			);
-			
-			angleDataHistory.push({
-				timestamp: i, // Using frame index as timestamp
-				angle: angle,
-				jointPositions: {
-					point1: pose[primaryJoint.anglePoints[0]],
-					point2: pose[primaryJoint.anglePoints[1]],
-					point3: pose[primaryJoint.anglePoints[2]]
-				}
-			});
+		// Store detailed angle data for each configuration
+		for (const angleConfig of exerciseConfig.anglePoints) {
+			const [p1, p2, p3] = angleConfig.points;
+			if (pose[p1] && pose[p2] && pose[p3]) {
+				const angle = calculateAngle(pose[p1], pose[p2], pose[p3]);
+				
+				angleDataHistory.push({
+					timestamp: i,
+					angle: angle,
+					jointPositions: {
+						point1: pose[p1],
+						point2: pose[p2],
+						point3: pose[p3]
+					}
+				});
+			}
 		}
 	}
 	
-	if (values.length < 15) return { repCount: 0, newRepSegments: [] };
+	if (values.length < 20) return { repCount: 0, newRepSegments: [] };
 	
-	// Detect peaks and valleys with exercise-specific parameters
-	const { peaks, valleys } = detectPeaksAndValleys(values, exerciseConfig.minPeakDistance);
+	// Detect peaks and valleys with advanced algorithm
+	const { peaks, valleys } = detectPeaksAndValleysAdvanced(values, exerciseConfig.minPeakDistance);
 	
 	// Only count reps if we have a minimum number of alternating events
 	const allEvents = [...peaks.map(i => ({ index: i, type: 'peak' })), ...valleys.map(i => ({ index: i, type: 'valley' }))];
@@ -556,39 +579,54 @@ export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
 	bicep_curl: {
 		name: 'bicep_curl',
 		initialDirection: 'down',
-		minPeakDistance: 8, // Increased from 3 to prevent noise
-		joints: [
+		inverted: true, // Inverted because as elbow flexes more, angle decreases
+		minPeakDistance: 8,
+		anglePoints: [
 			{
-				joint: LANDMARK_INDICES.LEFT_WRIST, // Track wrist movement
-				trackY: true,
-				inverted: true, // Screen down = exercise up
-				anglePoints: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST] // Elbow angle
+				name: 'left_elbow',
+				points: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST],
+				weight: 1.0
+			},
+			{
+				name: 'right_elbow',
+				points: [LANDMARK_INDICES.RIGHT_SHOULDER, LANDMARK_INDICES.RIGHT_ELBOW, LANDMARK_INDICES.RIGHT_WRIST],
+				weight: 1.0
 			}
 		]
 	},
 	squat: {
 		name: 'squat',
 		initialDirection: 'up',
-		minPeakDistance: 12, // Increased from 5 to prevent noise
-		joints: [
+		inverted: true, // Inverted because as knees flex more (going down), angle decreases
+		minPeakDistance: 12,
+		anglePoints: [
 			{
-				joint: LANDMARK_INDICES.LEFT_HIP, // Track hip movement
-				trackY: true,
-				inverted: false, // Screen down = exercise down
-				anglePoints: [LANDMARK_INDICES.LEFT_HIP, LANDMARK_INDICES.LEFT_KNEE, LANDMARK_INDICES.LEFT_ANKLE] // Knee angle
+				name: 'left_knee',
+				points: [LANDMARK_INDICES.LEFT_HIP, LANDMARK_INDICES.LEFT_KNEE, LANDMARK_INDICES.LEFT_ANKLE],
+				weight: 1.0
+			},
+			{
+				name: 'right_knee',
+				points: [LANDMARK_INDICES.RIGHT_HIP, LANDMARK_INDICES.RIGHT_KNEE, LANDMARK_INDICES.RIGHT_ANKLE],
+				weight: 1.0
 			}
 		]
 	},
 	push_up: {
 		name: 'push_up',
 		initialDirection: 'up',
-		minPeakDistance: 10, // Increased from 4 to prevent noise
-		joints: [
+		inverted: true, // Inverted because as elbows flex more (going down), angle decreases
+		minPeakDistance: 10,
+		anglePoints: [
 			{
-				joint: LANDMARK_INDICES.LEFT_SHOULDER, // Track shoulder movement
-				trackY: true,
-				inverted: false, // Screen down = exercise down
-				anglePoints: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST] // Elbow angle
+				name: 'left_elbow',
+				points: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST],
+				weight: 1.0
+			},
+			{
+				name: 'right_elbow',
+				points: [LANDMARK_INDICES.RIGHT_SHOULDER, LANDMARK_INDICES.RIGHT_ELBOW, LANDMARK_INDICES.RIGHT_WRIST],
+				weight: 1.0
 			}
 		]
 	}

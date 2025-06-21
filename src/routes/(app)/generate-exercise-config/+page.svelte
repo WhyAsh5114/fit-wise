@@ -23,12 +23,11 @@
 			name: string;
 			initialDirection: 'up' | 'down';
 			minPeakDistance: number;
-			joints: Array<{
-				joint: number;
-				trackY: boolean;
-				trackX?: boolean;
-				inverted?: boolean;
-				anglePoints?: number[];
+			inverted?: boolean;
+			anglePoints: Array<{
+				name: string;
+				points: [number, number, number];
+				weight?: number;
 			}>;
 		};
 	}
@@ -305,23 +304,17 @@
 								<div><strong>Exercise Name:</strong> {result.config.name}</div>
 								<div><strong>Initial Direction:</strong> {result.config.initialDirection}</div>
 								<div><strong>Min Peak Distance:</strong> {result.config.minPeakDistance} frames</div>
+								{#if result.config.inverted !== undefined}
+									<div><strong>Signal Inverted:</strong> {result.config.inverted ? 'Yes' : 'No'}</div>
+								{/if}
 								
-								{#each result.config.joints as joint, i (i)}
+								{#each result.config.anglePoints as angleConfig, i (i)}
 									<div class="border-t pt-2 mt-2">
-										<div><strong>Joint {i + 1}:</strong></div>
+										<div><strong>Angle {i + 1}: {angleConfig.name}</strong></div>
 										<div class="ml-4 space-y-1">
-											<div>Tracks: {getLandmarkName(joint.joint)} (index {joint.joint})</div>
-											<div>Y-axis: {joint.trackY ? 'Yes' : 'No'}</div>
-											{#if joint.trackX !== undefined}
-												<div>X-axis: {joint.trackX ? 'Yes' : 'No'}</div>
-											{/if}
-											{#if joint.inverted !== undefined}
-												<div>Inverted: {joint.inverted ? 'Yes' : 'No'}</div>
-											{/if}
-											{#if joint.anglePoints}
-												<div>
-													Angle Points: {joint.anglePoints.map(p => `${getLandmarkName(p)} (${p})`).join(' → ')}
-												</div>
+											<div>Points: [{angleConfig.points.map(p => `${getLandmarkName(p)} (${p})`).join(' → ')}]</div>
+											{#if angleConfig.weight !== undefined}
+												<div>Weight: {angleConfig.weight}</div>
 											{/if}
 										</div>
 									</div>
