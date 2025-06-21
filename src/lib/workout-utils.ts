@@ -422,6 +422,20 @@ async function processRepSegment(repSegment: RepSegment, exerciseConfig: Exercis
 									feedback = data.data;
 									console.log('AI Feedback:', feedback);
 									
+									// Dispatch custom event for feedback capture
+									if (typeof window !== 'undefined' && feedback) {
+										const feedbackEvent = new CustomEvent('ai-feedback', {
+											detail: {
+												repNumber: repAnalysis.repNumber,
+												feedback: feedback.feedback,
+												score: feedback.score,
+												classification: feedback.classification,
+												timestamp: new Date()
+											}
+										});
+										window.dispatchEvent(feedbackEvent);
+									}
+									
 									// Show toast with feedback
 									if (typeof window !== 'undefined' && feedback) {
 										const { toast } = await import('svelte-sonner');

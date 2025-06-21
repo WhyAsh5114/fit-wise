@@ -1,5 +1,8 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
+	import { onMount, onDestroy } from 'svelte';
+	import { tweened } from 'svelte/motion';
+	import { cubicOut } from 'svelte/easing';
+	import { browser } from '$app/environment';
 	import { Button } from '$lib/components/ui/button';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
@@ -11,13 +14,11 @@
 		PlayIcon,
 		Square,
 		UploadIcon,
-		TargetIcon,
 		Dumbbell
 	} from 'lucide-svelte';
 	import {
 		processExerciseReps,
 		type Pose as PoseData,
-		type ExerciseName,
 		type ExerciseConfig
 	} from '$lib/workout-utils';
 	import { toast } from 'svelte-sonner';
@@ -40,15 +41,59 @@
 	let poseLandmarker: PoseLandmarker | null = null;
 
 	// Exercise tracking variables
-	let selectedExercise: ExerciseName = 'bicep_curl';
 	let poseHistory: PoseData[] = [];
 	let currentReps = 0;
 	let maxRepsEverSeen = 0; // Track the highest rep count to prevent decreases
 	let lastProcessedRepCount = 0; // Track how many reps we've already logged
+	let feedbackList: Array<{
+		id: string;
+		repNumber: number;
+		feedback: string;
+		score: number;
+		classification: string;
+		timestamp: Date;
+	}> = [];
+	let pendingFeedback = new Set<number>(); // Track reps waiting for feedback
+
+	// Animated rep counter
+	const animatedReps = tweened(0, {
+		duration: 400,
+		easing: cubicOut
+	});
+
+	// Update animated counter when currentReps changes
+	$: animatedReps.set(currentReps);
 
 	// Feature toggle variables
 	let enableRAG = false;
 	let enableVoice = false;
+
+	// AI feedback event handler
+	const handleAIFeedback = (event: CustomEvent) => {
+		const { repNumber, feedback, score, classification, timestamp } = event.detail;
+		
+		// Remove from pending feedback
+		pendingFeedback.delete(repNumber);
+		pendingFeedback = new Set(pendingFeedback); // Trigger reactivity
+		
+		// Update existing feedback entry if it exists, otherwise add new one
+		const existingIndex = feedbackList.findIndex(f => f.repNumber === repNumber);
+		const feedbackEntry = {
+			id: `rep-${repNumber}-${Date.now()}`,
+			repNumber,
+			feedback,
+			score,
+			classification,
+			timestamp
+		};
+		
+		if (existingIndex >= 0) {
+			feedbackList[existingIndex] = feedbackEntry;
+			feedbackList = [...feedbackList]; // Trigger reactivity
+		} else {
+			feedbackList = [...feedbackList, feedbackEntry];
+		}
+	};
 
 	onMount(async () => {
 		// Initialize canvas context
@@ -134,6 +179,41 @@
 
 		// Load saved workouts
 		await loadSavedWorkouts();
+
+		// Listen for AI feedback events
+		const handleAIFeedback = (event: CustomEvent) => {
+			const { repNumber, feedback, score, classification, timestamp } = event.detail;
+			
+			// Update existing feedback entry if it exists, otherwise add new one
+			const existingIndex = feedbackList.findIndex(f => f.repNumber === repNumber);
+			const feedbackEntry = {
+				id: `rep-${repNumber}-${Date.now()}`,
+				repNumber,
+				feedback,
+				score,
+				classification,
+				timestamp
+			};
+			
+			if (existingIndex >= 0) {
+				feedbackList[existingIndex] = feedbackEntry;
+				feedbackList = [...feedbackList]; // Trigger reactivity
+			} else {
+				feedbackList = [...feedbackList, feedbackEntry];
+			}
+		};
+
+		// Add event listener for AI feedback (client-side only)
+		if (browser) {
+			window.addEventListener('ai-feedback', handleAIFeedback as EventListener);
+		}
+	});
+
+	onDestroy(() => {
+		// Remove event listener (client-side only)
+		if (browser) {
+			window.removeEventListener('ai-feedback', handleAIFeedback as EventListener);
+		}
 	});
 
 	async function getAvailableCameras() {
@@ -228,6 +308,20 @@
 					)
 						.then((result) => {
 							if (result.repCount > maxRepsEverSeen) {
+								// Add new reps to pending feedback
+								for (let i = maxRepsEverSeen + 1; i <= result.repCount; i++) {
+									pendingFeedback.add(i);
+									
+									// Set a timeout to remove from pending if no feedback comes within 30 seconds
+									setTimeout(() => {
+										if (pendingFeedback.has(i)) {
+											pendingFeedback.delete(i);
+											pendingFeedback = new Set(pendingFeedback);
+										}
+									}, 30000);
+								}
+								pendingFeedback = new Set(pendingFeedback); // Trigger reactivity
+								
 								maxRepsEverSeen = result.repCount;
 								currentReps = result.repCount;
 								lastProcessedRepCount = result.repCount;
@@ -404,6 +498,9 @@
 		currentReps = 0;
 		maxRepsEverSeen = 0;
 		lastProcessedRepCount = 0;
+		feedbackList = [];
+		pendingFeedback = new Set();
+		animatedReps.set(0, { duration: 200 });
 	}
 
 	// Workout management
@@ -452,6 +549,46 @@
 		if (workout) selectWorkout(workout);
 	}
 </script>
+
+<style>
+	@keyframes slideInFromLeft {
+		0% {
+			transform: translateX(-20px);
+			opacity: 0;
+		}
+		100% {
+			transform: translateX(0);
+			opacity: 1;
+		}
+	}
+
+	@keyframes pulseIn {
+		0% {
+			transform: scale(0.98);
+			opacity: 0;
+		}
+		100% {
+			transform: scale(1);
+			opacity: 1;
+		}
+	}
+
+	@keyframes repBounce {
+		0% {
+			transform: scale(1);
+		}
+		50% {
+			transform: scale(1.1);
+		}
+		100% {
+			transform: scale(1);
+		}
+	}
+
+	.feedback-item {
+		transition: all 0.3s ease-out;
+	}
+</style>
 
 <div class="container mx-auto space-y-6 p-6">
 	<div class="text-center">
@@ -604,20 +741,6 @@
 					</Button>
 				{/if}
 
-				<!-- Rep Counter -->
-				{#if isDetecting}
-					<div class="bg-muted space-y-2 rounded-lg p-4">
-						<div class="flex items-center justify-between">
-							<h3 class="font-semibold">Rep Counter</h3>
-							<Button onclick={resetRepCount} size="sm" variant="outline">Reset</Button>
-						</div>
-						<div class="text-center">
-							<div class="text-primary text-3xl font-bold">{currentReps}</div>
-							<div class="text-muted-foreground text-sm">Repetitions</div>
-						</div>
-					</div>
-				{/if}
-
 				<!-- AI Features -->
 				<div class="bg-muted space-y-3 rounded-lg p-4">
 					<h3 class="text-sm font-semibold">AI Features</h3>
@@ -709,26 +832,101 @@
 
 				<!-- Status indicator -->
 				{#if isDetecting}
-					<div class="mt-4 space-y-2">
-						<div class="flex items-center gap-2 text-sm text-green-600">
-							<div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
-							AI pose detection active - {currentExercise?.name || 'No exercise selected'}
+					<div class="mt-4 space-y-4">
+						<!-- Rep Counter and Mode Info -->
+						<div class="flex items-center justify-between">						<div class="flex items-center gap-4">
+							<div class="text-center">
+								<div class="text-primary text-3xl font-bold transition-all duration-300 hover:scale-110">{Math.round($animatedReps)}</div>
+								<div class="text-muted-foreground text-sm">Repetitions</div>
+							</div>
+							<Button onclick={resetRepCount} size="sm" variant="outline">Reset</Button>
+						</div>
+							
+							<!-- Status and Mode Info -->
+							<div class="flex flex-col items-end gap-1">
+								<div class="flex items-center gap-2 text-sm text-green-600">
+									<div class="h-2 w-2 animate-pulse rounded-full bg-green-500"></div>
+									AI pose detection active - {currentExercise?.name || 'No exercise selected'}
+								</div>
+								{#if enableRAG || enableVoice}
+									<div class="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
+										<div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
+										Enhanced feedback:
+										{#if enableRAG}📚 Reference{/if}
+										{#if enableRAG && enableVoice}
+											+
+										{/if}
+										{#if enableVoice}🔊 Voice{/if}
+									</div>
+								{:else}
+									<div class="flex items-center gap-2 text-xs text-gray-500">
+										<div class="h-1.5 w-1.5 rounded-full bg-gray-400"></div>
+										Fast mode: Text feedback only
+									</div>
+								{/if}
+							</div>
 						</div>
 
-						{#if enableRAG || enableVoice}
-							<div class="flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400">
-								<div class="h-1.5 w-1.5 rounded-full bg-blue-500"></div>
-								Enhanced feedback:
-								{#if enableRAG}📚 Reference{/if}
-								{#if enableRAG && enableVoice}
-									+
-								{/if}
-								{#if enableVoice}🔊 Voice{/if}
+						<!-- Feedback List -->
+						{#if feedbackList.length > 0 || pendingFeedback.size > 0}
+							<div class="space-y-2">
+								<h3 class="text-sm font-semibold">Recent Feedback</h3>
+								<div class="max-h-48 space-y-2 overflow-y-auto">
+									<!-- Show last 5 reps in reverse order (newest first) -->
+									{#each Array.from({ length: Math.max(currentReps, 5) }, (_, i) => currentReps - i).filter(repNum => repNum > 0).slice(0, 5) as repNumber (repNumber)}
+										{@const feedback = feedbackList.find(f => f.repNumber === repNumber)}
+										{@const isPending = pendingFeedback.has(repNumber)}
+										
+										{#if feedback}
+											<!-- Completed feedback with slide-in animation -->
+											<div 
+												class="feedback-item border-l-4 rounded bg-gray-50 p-3 dark:bg-gray-800 {
+													feedback.classification === 'good' ? 'border-green-500' :
+													feedback.classification === 'poor' ? 'border-red-500' :
+													'border-yellow-500'
+												}"
+												style="animation: slideInFromLeft 0.5s ease-out"
+											>
+												<div class="flex items-start justify-between">
+													<div class="flex-1">
+														<div class="text-xs text-gray-500 mb-1">
+															Rep #{feedback.repNumber} • Score: {feedback.score}/10
+														</div>
+														<p class="text-sm">{feedback.feedback}</p>
+													</div>
+													<div class="ml-2 text-xs text-gray-400">
+														{feedback.timestamp.toLocaleTimeString()}
+													</div>
+												</div>
+											</div>
+										{:else if isPending}
+											<!-- Loading state with pulse animation -->
+											<div 
+												class="feedback-item border-l-4 border-blue-500 rounded bg-blue-50 p-3 dark:bg-blue-950/20"
+												style="animation: pulseIn 0.3s ease-out"
+											>
+												<div class="flex items-center justify-between">
+													<div class="flex items-center gap-2">
+														<div class="h-4 w-4 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+														<div class="text-xs text-blue-600 dark:text-blue-400">
+															Rep #{repNumber} • Analyzing...
+														</div>
+													</div>
+													<div class="text-xs text-gray-400">
+														{new Date().toLocaleTimeString()}
+													</div>
+												</div>
+												<p class="text-sm text-blue-600 dark:text-blue-300 mt-1">
+													AI is analyzing your form and generating feedback...
+												</p>
+											</div>
+										{/if}
+									{/each}
+								</div>
 							</div>
 						{:else}
-							<div class="flex items-center gap-2 text-xs text-gray-500">
-								<div class="h-1.5 w-1.5 rounded-full bg-gray-400"></div>
-								Fast mode: Text feedback only
+							<div class="text-center text-gray-500 py-4">
+								<p class="text-sm">Perform repetitions to see AI feedback here</p>
 							</div>
 						{/if}
 					</div>
@@ -736,48 +934,6 @@
 			</CardContent>
 		</Card>
 	</div>
-
-	<!-- Exercise Information -->
-	<Card>
-		<CardHeader>
-			<CardTitle class="flex items-center gap-2">
-				<TargetIcon class="h-5 w-5" />
-				Exercise: {currentExercise?.name || 'No exercise selected'}
-			</CardTitle>
-		</CardHeader>
-		<CardContent>
-			<div class="grid grid-cols-1 gap-4 text-sm md:grid-cols-2">
-				<div>
-					<h4 class="mb-2 font-medium">How it works:</h4>
-					{#if selectedExercise === 'bicep_curl'}
-						<p class="text-muted-foreground">
-							Tracks your elbow angle to count bicep curl repetitions. Start with arms extended,
-							curl up to flex, then lower back down for one rep.
-						</p>
-					{:else if selectedExercise === 'squat'}
-						<p class="text-muted-foreground">
-							Monitors your knee angle to detect squat movements. Start standing, squat down until
-							thighs are parallel, then stand back up for one rep.
-						</p>
-					{:else if selectedExercise === 'push_up'}
-						<p class="text-muted-foreground">
-							Analyzes your arm angle during push-ups. Start in plank position, lower down by
-							bending arms, then push back up for one rep.
-						</p>
-					{/if}
-				</div>
-				<div>
-					<h4 class="mb-2 font-medium">Tips for best results:</h4>
-					<ul class="text-muted-foreground space-y-1">
-						<li>• Position yourself sideways to the camera</li>
-						<li>• Ensure your full body is visible</li>
-						<li>• Maintain consistent lighting</li>
-						<li>• Perform controlled, deliberate movements</li>
-					</ul>
-				</div>
-			</div>
-		</CardContent>
-	</Card>
 
 	<!-- Instructions -->
 	<Card>
