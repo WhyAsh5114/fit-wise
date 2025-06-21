@@ -5,7 +5,8 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
 	import * as Select from '$lib/components/ui/select/index.js';
-	import { Loader2, Dumbbell, Settings, CheckCircle, XCircle } from 'lucide-svelte';
+	import { Loader2, Dumbbell, Settings, CheckCircle } from 'lucide-svelte';
+	import { toast } from 'svelte-sonner';
 
 	let exerciseName = '';
 	let exerciseDescription = '';
@@ -37,10 +38,8 @@
 	}
 
 	let result: ExerciseConfigResult | null = null;
-	let error: string | null = null;
 	let saving = false;
 	let saveSuccess = false;
-	let saveError: string | null = null;
 
 	const predefinedExercises = [
 		{
@@ -67,12 +66,11 @@
 
 	async function generateConfig() {
 		if (!exerciseName.trim()) {
-			error = 'Please enter an exercise name';
+			toast.error('Please enter an exercise name');
 			return;
 		}
 
 		loading = true;
-		error = null;
 		result = null;
 
 		try {
@@ -93,10 +91,10 @@
 			if (data.success) {
 				result = data;
 			} else {
-				error = data.error || 'Failed to generate exercise configuration';
+				toast.error(data.error || 'Failed to generate exercise configuration');
 			}
 		} catch (err) {
-			error = err instanceof Error ? err.message : 'An unexpected error occurred';
+			toast.error(err instanceof Error ? err.message : 'An unexpected error occurred');
 		} finally {
 			loading = false;
 		}
@@ -112,17 +110,13 @@
 		exerciseDescription = '';
 		romFocus = 'standard';
 		result = null;
-		error = null;
 		saveSuccess = false;
-		saveError = null;
 	}
 
 	async function saveConfig() {
 		if (!result) return;
 
 		saving = true;
-		saveError = null;
-		saveSuccess = false;
 
 		try {
 			const response = await fetch('/api/exercise-configs', {
@@ -147,12 +141,13 @@
 			const data = await response.json();
 
 			if (data.success) {
+				toast.success('Configuration saved successfully! You can now use it in your workouts.');
 				saveSuccess = true;
 			} else {
-				saveError = data.error || 'Failed to save exercise configuration';
+				toast.error(data.error || 'Failed to save exercise configuration');
 			}
 		} catch (err) {
-			saveError = err instanceof Error ? err.message : 'An unexpected error occurred';
+			toast.error(err instanceof Error ? err.message : 'An unexpected error occurred');
 		} finally {
 			saving = false;
 		}
@@ -286,9 +281,6 @@
 					{#if result}
 						<CheckCircle class="h-5 w-5 text-green-500" />
 						Generated Configuration
-					{:else if error}
-						<XCircle class="h-5 w-5 text-red-500" />
-						Error
 					{:else}
 						<Settings class="h-5 w-5" />
 						Results
@@ -299,10 +291,6 @@
 				{#if loading}
 					<div class="flex items-center justify-center p-8">
 						<Loader2 class="h-8 w-8 animate-spin text-muted-foreground" />
-					</div>
-				{:else if error}
-					<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">
-						{error}
 					</div>
 				{:else if result}
 					<div class="space-y-4">
@@ -362,24 +350,6 @@
 
 						<!-- Save Section -->
 						<div class="border-t pt-4">
-							{#if saveSuccess}
-								<div class="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 mb-4">
-									<div class="flex items-center gap-2">
-										<CheckCircle class="h-4 w-4" />
-										Configuration saved successfully! You can now use it in your workouts.
-									</div>
-								</div>
-							{/if}
-							
-							{#if saveError}
-								<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 mb-4">
-									<div class="flex items-center gap-2">
-										<XCircle class="h-4 w-4" />
-										{saveError}
-									</div>
-								</div>
-							{/if}
-
 							<div class="flex gap-2">
 								<Button onclick={saveConfig} disabled={saving || saveSuccess} class="flex-1">
 									{#if saving}
