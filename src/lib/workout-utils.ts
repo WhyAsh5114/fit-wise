@@ -323,7 +323,7 @@ async function processRepSegment(repSegment: RepSegment): Promise<void> {
 
 	console.log('Rep Analysis:', repAnalysis);
 
-	// Send to AI feedback API
+	// Send to AI feedback API with streaming response
 	try {
 		const response = await fetch('/api/feedback', {
 			method: 'POST',
@@ -334,8 +334,63 @@ async function processRepSegment(repSegment: RepSegment): Promise<void> {
 		});
 
 		if (response.ok) {
-			const feedback = await response.json();
-			console.log('AI Feedback:', feedback);
+			// Handle streaming response
+			const reader = response.body?.getReader();
+			const decoder = new TextDecoder();
+			let feedback: { feedback: string; score: number; classification: string } | null = null;
+
+			if (reader) {
+				let buffer = '';
+				
+				while (true) {
+					const { done, value } = await reader.read();
+					if (done) break;
+
+					buffer += decoder.decode(value, { stream: true });
+					const lines = buffer.split('\n');
+					buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+					for (const line of lines) {
+						if (line.trim()) {
+							try {
+								const data = JSON.parse(line);
+								
+								if (data.type === 'feedback') {
+									feedback = data.data;
+									console.log('AI Feedback:', feedback);
+									
+									// Show toast with feedback
+									if (typeof window !== 'undefined' && feedback) {
+										const { toast } = await import('svelte-sonner');
+										
+										toast.success(`Rep ${repAnalysis.repNumber} Analysis`, {
+											description: `${feedback.feedback} (Score: ${feedback.score}/100)`,
+											duration: 5000
+										});
+									}
+								} else if (data.type === 'audio') {
+									// Play the audio
+									if (typeof window !== 'undefined') {
+										const audioBase64 = data.data;
+										const audioBlob = new Blob([Uint8Array.from(atob(audioBase64), c => c.charCodeAt(0))], { type: 'audio/mpeg' });
+										const audioUrl = URL.createObjectURL(audioBlob);
+										const audio = new Audio(audioUrl);
+										
+										audio.play().catch(console.error);
+										
+										// Clean up URL after playing
+										audio.addEventListener('ended', () => {
+											URL.revokeObjectURL(audioUrl);
+										});
+									}
+								}
+							} catch (parseError) {
+								console.error('Error parsing streaming data:', parseError);
+							}
+						}
+					}
+				}
+			}
 		} else {
 			console.error('Failed to get AI feedback:', response.statusText);
 		}

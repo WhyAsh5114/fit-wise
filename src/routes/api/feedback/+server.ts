@@ -1,8 +1,12 @@
+import { SARVAM_API_KEY } from '$env/static/private';
 import { WorkoutFeedbackInputSchema, WorkoutFeedbackOutputSchema } from '$lib/types/feedback';
 import { OpenAICompatibleChatLanguageModel } from '@ai-sdk/openai-compatible';
-import { streamObject, type LanguageModelV1 } from 'ai';
 import { QdrantClient } from '@qdrant/js-client-rest';
+import { generateObject, type LanguageModelV1 } from 'ai';
+import { SarvamAIClient } from 'sarvamai';
 import type { RequestHandler } from './$types';
+
+const client = new SarvamAIClient({ apiSubscriptionKey: SARVAM_API_KEY });
 
 // Types
 interface QdrantPoint {
@@ -159,17 +163,45 @@ Return:
 - score: 0-100 based on form quality
 - classification: "good" (80-100), "okay" (60-79), "bad" (0-59)`;
 
-		// Stream the object generation
-		const result = await streamObject({
+		// Generate the feedback object first
+		const result = await generateObject({
 			model,
 			schema: WorkoutFeedbackOutputSchema,
 			prompt
 		});
 
-		// Return the streaming response with RAG usage info
-		return new Response(result.textStream, {
+		const feedback = result.object;
+
+		// Generate text-to-speech audio
+		const ttsResponse = await client.textToSpeech.convert({
+			text: feedback.feedback,
+			target_language_code: "bn-IN" // Using Bengali as per the user request
+		});
+
+		// Create a readable stream to send both text and audio
+		const stream = new ReadableStream({
+			start(controller) {
+				// First, send the feedback data as JSON
+				const feedbackData = JSON.stringify({
+					type: 'feedback',
+					data: feedback
+				}) + '\n';
+				controller.enqueue(new TextEncoder().encode(feedbackData));
+
+				// Then send the complete audio data
+				const audioChunk = JSON.stringify({
+					type: 'audio',
+					data: ttsResponse.audios[0] // This should be the base64 audio data
+				}) + '\n';
+				controller.enqueue(new TextEncoder().encode(audioChunk));
+				
+				controller.close();
+			}
+		});
+
+		return new Response(stream, {
 			headers: {
-				'Content-Type': 'text/plain; charset=utf-8',
+				'Content-Type': 'application/x-ndjson',
 				'X-RAG-Used': exerciseReference ? 'true' : 'false'
 			}
 		});

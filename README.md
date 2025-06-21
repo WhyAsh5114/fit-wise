@@ -8,7 +8,8 @@
 
 - 🧠 **Agentic AI**: Understands your fitness goals and builds adaptive routines.
 - 🎯 **Personalized Workouts**: Tailors routines based on your body, experience level, and objectives.
-- 📷 **MediaPipe Pose Detection**: Tracks your form live via camera.
+- � **RAG-Enhanced Knowledge**: Leverages embeddings of the latest exercise science and anatomy research to provide evidence-based recommendations.
+- �📷 **MediaPipe Pose Detection**: Tracks your form live via camera.
 - ✅ **Real-Time Feedback**: Get instant corrections and guidance on your posture and reps.
 - 🕹️ **Simple UI**: Designed to be distraction-free and easy to navigate.
 
@@ -18,6 +19,7 @@
 
 - **Frontend**: SvelteKit + shadcn/ui (Web)
 - **AI**: Agentic framework (Vercel AI-SDK)
+- **RAG System**: Vector embeddings of exercise science research, anatomy studies, and biomechanics data
 - **Pose Detection**: MediaPipe (Pose Landmarks)
 - **Backend (optional)**: SvelteKit API
 - **Database**: Vercel Postgres
@@ -26,9 +28,10 @@
 ## 🔍 How It Works
 
 1. **Input your goals** → muscle gain, fat loss, mobility, etc.
-2. **AI Agent** crafts a plan → exercises, reps, rest times.
-3. **Webcam activates** during your workout to detect posture.
-4. **Live feedback** guides your form, preventing injuries and bad habits.
+2. **AI Agent** queries the RAG system to retrieve relevant exercise science and anatomy research.
+3. **AI crafts a plan** → exercises, reps, rest times based on evidence-based recommendations.
+4. **Webcam activates** during your workout to detect posture.
+5. **Live feedback** guides your form using biomechanics knowledge, preventing injuries and bad habits.
 
 ---
 
