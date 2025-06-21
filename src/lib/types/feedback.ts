@@ -11,6 +11,11 @@ export const WorkoutFeedbackInputSchema = z.object({
 	}),
 	averageAngle: z.number(),
 	rangeOfMotion: z.number(),
+	// Target angle ranges for guidance
+	targetAngles: z.object({
+		min: z.number(),
+		max: z.number()
+	}).optional(),
 	// Optional feature flags
 	enableRAG: z.boolean().optional().default(false),
 	enableVoice: z.boolean().optional().default(false)

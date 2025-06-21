@@ -4,10 +4,12 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
+	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
 	import { Loader2, Dumbbell, Settings, CheckCircle, XCircle } from 'lucide-svelte';
 
 	let exerciseName = '';
 	let exerciseDescription = '';
+	let romFocus = 'standard';
 	let loading = false;
 	interface ExerciseConfigResult {
 		success: boolean;
@@ -28,6 +30,8 @@
 				name: string;
 				points: [number, number, number];
 				weight?: number;
+				targetLowAngle?: number;
+				targetHighAngle?: number;
 			}>;
 		};
 	}
@@ -79,7 +83,8 @@
 				},
 				body: JSON.stringify({
 					exerciseName: exerciseName.trim(),
-					exerciseDescription: exerciseDescription.trim() || undefined
+					exerciseDescription: exerciseDescription.trim() || undefined,
+					romFocus: romFocus
 				})
 			});
 
@@ -105,6 +110,7 @@
 	function clearForm() {
 		exerciseName = '';
 		exerciseDescription = '';
+		romFocus = 'standard';
 		result = null;
 		error = null;
 		saveSuccess = false;
@@ -220,6 +226,26 @@
 					/>
 				</div>
 
+				<div>
+					<label for="rom-focus" class="block text-sm font-medium mb-2">
+						Range of Motion Focus
+					</label>
+					<Select value={romFocus} onValueChange={(v) => romFocus = v || 'standard'}>
+						<SelectTrigger>
+							{romFocus === 'low' ? 'Low - Conservative for beginners' : 
+							 romFocus === 'high' ? 'High - Extended for advanced users' :
+							 romFocus === 'maximum' ? 'Maximum - Elite athletes' :
+							 'Standard - Average fitness level'}
+						</SelectTrigger>
+						<SelectContent>
+							<SelectItem value="low">Low - Conservative for beginners</SelectItem>
+							<SelectItem value="standard">Standard - Average fitness level</SelectItem>
+							<SelectItem value="high">High - Extended for advanced users</SelectItem>
+							<SelectItem value="maximum">Maximum - Elite athletes</SelectItem>
+						</SelectContent>
+					</Select>
+				</div>
+
 				<div class="flex gap-2">
 					<Button onclick={generateConfig} disabled={loading} class="flex-1">
 						{#if loading}
@@ -315,6 +341,12 @@
 											<div>Points: [{angleConfig.points.map(p => `${getLandmarkName(p)} (${p})`).join(' → ')}]</div>
 											{#if angleConfig.weight !== undefined}
 												<div>Weight: {angleConfig.weight}</div>
+											{/if}
+											{#if angleConfig.targetLowAngle !== undefined && angleConfig.targetHighAngle !== undefined}
+												<div class="text-blue-600">
+													<strong>Target Range:</strong> {angleConfig.targetLowAngle}° - {angleConfig.targetHighAngle}°
+													<span class="text-xs text-gray-500">({angleConfig.targetHighAngle - angleConfig.targetLowAngle}° ROM)</span>
+												</div>
 											{/if}
 										</div>
 									</div>

@@ -113,7 +113,7 @@ ${payload?.content || 'No content available'}`;
 
 // Initialize the model
 const model: LanguageModelV1 = new OpenAICompatibleChatLanguageModel(
-	'qwen/qwen3-4b',
+	'deepseek/deepseek-r1-0528-qwen3-8b',
 	{},
 	{
 		provider: `lmstudio.chat`,
@@ -148,6 +148,13 @@ Exercise Data:
 - Average Angle: ${input.averageAngle}°
 - Range of Motion: ${input.rangeOfMotion}°`;
 
+		// Add target angle information if available
+		if (input.targetAngles) {
+			prompt += `
+- Target Angle Range: ${input.targetAngles.min}° to ${input.targetAngles.max}° (optimal)
+- ROM Target Achievement: ${(input.rangeOfMotion / (input.targetAngles.max - input.targetAngles.min) * 100).toFixed(1)}%`;
+		}
+
 		// Add exercise reference if available
 		if (exerciseReference) {
 			prompt += `\n\nEXERCISE REFERENCE INFORMATION:
@@ -157,14 +164,16 @@ Use this reference information to provide more accurate feedback about proper fo
 		}
 
 		prompt += `\n\nProvide feedback based on these criteria:
-1. Range of Motion: Compare to proper standards for this exercise
+1. Range of Motion: ${input.targetAngles ? 'Compare to target range and assess if user achieved optimal ROM' : 'Compare to proper standards for this exercise, and prefer higher ranges in general'}
 2. Duration: Controlled movement timing is important
-3. Angle Range: Should be appropriate for the exercise type
+3. Angle Range: Should be appropriate for the exercise type${input.targetAngles ? ' and within target ranges' : ''}
 4. Overall form quality assessment
+
+${input.targetAngles ? `Focus on whether the user achieved the target range (${input.targetAngles.min}°-${input.targetAngles.max}°). If they fell short, encourage them to go deeper/higher. If they exceeded safely, praise their mobility.` : ''}
 
 Return:
 - feedback: Max 100 chars, specific, concise, and actionable
-- score: 0-100 based on form quality
+- score: 0-100 based on form quality${input.targetAngles ? ' (bonus points for achieving target ROM)' : ''}
 - classification: "good" (80-100), "okay" (60-79), "bad" (0-59)`;
 
 		// Generate the feedback object first

@@ -65,7 +65,9 @@ const LANDMARK_INDICES = {
 const AngleConfigSchema = z.object({
 	name: z.string().describe('Name for this angle (e.g., "left_elbow", "right_knee")'),
 	points: z.array(z.number()).length(3).describe('Three joint indices for angle calculation [point1, vertex, point3]'),
-	weight: z.number().optional().describe('Weight for this angle in the composite signal (default 1.0)')
+	weight: z.number().optional().describe('Weight for this angle in the composite signal (default 1.0)'),
+	targetLowAngle: z.number().min(0).max(180).describe('Target minimum angle in degrees for optimal range of motion'),
+	targetHighAngle: z.number().min(0).max(180).describe('Target maximum angle in degrees for optimal range of motion')
 });
 
 const ExerciseConfigSchema = z.object({
@@ -88,7 +90,7 @@ const ExerciseAnalysisSchema = z.object({
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		console.log('Exercise Config API: Starting request processing...');
-		const { exerciseName, exerciseDescription, autoSave = false } = await request.json();
+		const { exerciseName, exerciseDescription, autoSave = false, romFocus = 'standard' } = await request.json();
 
 		if (!exerciseName) {
 			console.error('Exercise Config API: Exercise name is required');
@@ -96,6 +98,13 @@ export const POST: RequestHandler = async ({ request }) => {
 		}
 
 		console.log(`Exercise Config API: Generating config for "${exerciseName}"`);
+
+		const romInstructions = {
+			'low': 'Generate conservative target angle ranges suitable for beginners or those with mobility limitations. Reduce the difference between targetLowAngle and targetHighAngle by 20-30%.',
+			'standard': 'Generate standard target angle ranges for average fitness levels and typical range of motion.',
+			'high': 'Generate extended target angle ranges for advanced users seeking maximum range of motion. Increase the difference between targetLowAngle and targetHighAngle by 20-30%.',
+			'maximum': 'Generate maximum safe target angle ranges for elite athletes and those with exceptional mobility. Increase the difference between targetLowAngle and targetHighAngle by 40-50%.'
+		};
 
 		const systemPrompt = `You are an expert in biomechanics and exercise analysis. Your task is to generate MediaPipe pose tracking configurations for exercises based on ANGLE MEASUREMENTS ONLY.
 
@@ -118,7 +127,17 @@ EXERCISE ANALYSIS GUIDELINES:
    - Left knee: [LEFT_HIP, LEFT_KNEE, LEFT_ANKLE]
    - Right knee: [RIGHT_HIP, RIGHT_KNEE, RIGHT_ANKLE]
 
-3. **Signal Inversion**:
+3. **Target Angle Ranges**: Define optimal range of motion for each angle
+   - **targetLowAngle**: The target minimum angle (fully flexed position)
+   - **targetHighAngle**: The target maximum angle (fully extended position)
+   - Examples:
+     - Bicep curl elbow: targetLowAngle=45°, targetHighAngle=150°
+     - Squat knee: targetLowAngle=90°, targetHighAngle=170°
+     - Push-up elbow: targetLowAngle=60°, targetHighAngle=160°
+   - For higher ROM focus: Increase the difference between high and low targets
+   - For safety/mobility limited: Reduce the difference between high and low targets
+
+4. **Signal Inversion**:
    - Set inverted=true when LOWER angles represent the exercise "up" position
    - Examples:
      - Bicep curl: inverted=true (smaller elbow angle = curled up)
@@ -126,27 +145,32 @@ EXERCISE ANALYSIS GUIDELINES:
      - Push-up: inverted=true (smaller elbow angle = lowered down)
    - Most exercises will need inverted=true since flexion (smaller angles) is usually the "working" position
 
-4. **Initial Direction**:
+5. **Initial Direction**:
    - 'up': Exercise starts in the extended/top position (larger angles)
    - 'down': Exercise starts in the flexed/bottom position (smaller angles)
 
-5. **Min Peak Distance**:
+6. **Min Peak Distance**:
    - Faster exercises: 5-8 frames
    - Moderate exercises: 8-12 frames  
    - Slower exercises: 12-20 frames
 
-6. **Angle Naming**: Use descriptive names like "left_elbow", "right_knee", "left_shoulder", etc.
+7. **Angle Naming**: Use descriptive names like "left_elbow", "right_knee", "left_shoulder", etc.
 
 EXAMPLE CONFIGURATIONS:
 - Bicep Curl: Track left_elbow + right_elbow angles, inverted=true, initialDirection='down'
-- Squat: Track left_knee + right_knee angles, inverted=true, initialDirection='up'  
+  - Elbow angles: targetLowAngle=45°, targetHighAngle=150°
+- Squat: Track left_knee + right_knee angles, inverted=true, initialDirection='up'
+  - Knee angles: targetLowAngle=90°, targetHighAngle=170°
 - Push-up: Track left_elbow + right_elbow angles, inverted=true, initialDirection='up'
+  - Elbow angles: targetLowAngle=60°, targetHighAngle=160°
 - Overhead Press: Track left_elbow + right_elbow angles, inverted=true, initialDirection='down'
+  - Elbow angles: targetLowAngle=30°, targetHighAngle=140°
 
-Analyze the exercise and generate an angle-based configuration with bilateral tracking when possible.`;
+Analyze the exercise and generate an angle-based configuration with bilateral tracking when possible. Include realistic target angle ranges based on typical human biomechanics and the specific exercise requirements.`;
 
 		const userPrompt = `Exercise: ${exerciseName}
 ${exerciseDescription ? `Description: ${exerciseDescription}` : ''}
+${romFocus !== 'standard' ? `Range of Motion Focus: ${romFocus} - ${romInstructions[romFocus as keyof typeof romInstructions]}` : ''}
 
 Analyze this exercise and generate a MediaPipe pose tracking configuration. Consider the biomechanics, primary movement patterns, and which joints would provide the most reliable tracking data.`;
 

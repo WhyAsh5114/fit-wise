@@ -210,10 +210,20 @@
 				
 				// Update rep count using dynamic exercise configs
 				if (poseHistory.length > 15 && currentExercise?.exerciseConfig) {
-					processExerciseReps(poseHistory, currentExercise.name, lastProcessedRepCount, {
-						enableRAG,
-						enableVoice
-					})
+					// Use the preloaded exercise config from the workout
+					const preloadedConfig = currentExercise.exerciseConfig.config;
+					
+					processExerciseReps(
+						poseHistory, 
+						currentExercise.name, 
+						lastProcessedRepCount, 
+						{
+							enableRAG,
+							enableVoice
+						},
+						undefined, // no description needed since we have the config
+						preloadedConfig // pass the preloaded config
+					)
 						.then((result) => {
 							if (result.repCount > maxRepsEverSeen) {
 								maxRepsEverSeen = result.repCount;

@@ -37,16 +37,24 @@ Based on the analysis, the AI generates:
 ```typescript
 import { getExerciseConfig, processExerciseReps } from '$lib/workout-utils';
 
-// Get or generate exercise config
-const config = await getExerciseConfig('shoulder press', 'Press weights overhead from shoulder level');
-
-// Process reps with dynamic config
-const result = await processExerciseReps(
+// Option 1: Auto-generate exercise config
+const result1 = await processExerciseReps(
     poseHistory, 
     'shoulder press', 
     lastRepCount, 
     { enableRAG: true, enableVoice: true },
     'Press weights overhead from shoulder level'
+);
+
+// Option 2: Use preloaded exercise config (recommended for performance)
+const preloadedConfig = await getExerciseConfig('shoulder press', 'Press weights overhead from shoulder level');
+const result2 = await processExerciseReps(
+    poseHistory, 
+    'shoulder press', 
+    lastRepCount, 
+    { enableRAG: true, enableVoice: true },
+    undefined, // no description needed since we have the config
+    preloadedConfig // pass the preloaded config
 );
 ```
 

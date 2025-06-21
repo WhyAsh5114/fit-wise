@@ -13,6 +13,8 @@ type AngleConfig = {
 	name: string; // e.g., "left_elbow", "right_elbow"
 	points: [number, number, number]; // Three joint indices for angle calculation [point1, vertex, point3]
 	weight?: number; // Weight for this angle in the composite signal (default 1.0)
+	targetLowAngle?: number; // Target minimum angle in degrees for optimal range of motion
+	targetHighAngle?: number; // Target maximum angle in degrees for optimal range of motion
 };
 
 export type ExerciseConfig = {
@@ -276,7 +278,7 @@ export function segmentReps(
 						newRepSegments.push(repSegment);
 						
 						// Process the rep segment (console log and AI feedback)
-						processRepSegment(repSegment, feedbackOptions).catch(error => {
+						processRepSegment(repSegment, exerciseConfig, feedbackOptions).catch(error => {
 							console.error('Error processing rep segment:', error);
 						});
 					}
@@ -331,7 +333,7 @@ export type RepAnalysis = {
 /**
  * Process a completed rep segment and send angle data to analysis
  */
-async function processRepSegment(repSegment: RepSegment, feedbackOptions: FeedbackOptions = {}): Promise<void> {
+async function processRepSegment(repSegment: RepSegment, exerciseConfig: ExerciseConfig, feedbackOptions: FeedbackOptions = {}): Promise<void> {
 	if (repSegment.angles.length === 0) {
 		console.log(`Rep #${repSegment.repNumber} - No angle data available`);
 		return;
@@ -342,6 +344,24 @@ async function processRepSegment(repSegment: RepSegment, feedbackOptions: Feedba
 	const maxAngle = Math.max(...angles);
 	const avgAngle = angles.reduce((sum, angle) => sum + angle, 0) / angles.length;
 	const rangeOfMotion = maxAngle - minAngle;
+
+	// Calculate target angles from exercise config if available
+	let targetAngles: { min: number; max: number } | undefined;
+	if (exerciseConfig.anglePoints && exerciseConfig.anglePoints.length > 0) {
+		const angleConfigs = exerciseConfig.anglePoints.filter(config => 
+			config.targetLowAngle !== undefined && config.targetHighAngle !== undefined
+		);
+		
+		if (angleConfigs.length > 0) {
+			// Use average of all configured target ranges
+			const avgTargetLow = angleConfigs.reduce((sum, config) => sum + (config.targetLowAngle || 0), 0) / angleConfigs.length;
+			const avgTargetHigh = angleConfigs.reduce((sum, config) => sum + (config.targetHighAngle || 0), 0) / angleConfigs.length;
+			targetAngles = {
+				min: Math.round(avgTargetLow * 10) / 10,
+				max: Math.round(avgTargetHigh * 10) / 10
+			};
+		}
+	}
 
 	const repAnalysis: RepAnalysis = {
 		exerciseName: repSegment.exerciseType.replace('_', ' '),
@@ -356,6 +376,9 @@ async function processRepSegment(repSegment: RepSegment, feedbackOptions: Feedba
 	};
 
 	console.log('Rep Analysis:', repAnalysis);
+	if (targetAngles) {
+		console.log('Target Angles:', targetAngles);
+	}
 
 	// Send to AI feedback API with streaming response
 	try {
@@ -366,6 +389,7 @@ async function processRepSegment(repSegment: RepSegment, feedbackOptions: Feedba
 			},
 			body: JSON.stringify({
 				...repAnalysis,
+				...(targetAngles && { targetAngles }),
 				enableRAG: feedbackOptions.enableRAG || false,
 				enableVoice: feedbackOptions.enableVoice || false
 			})
@@ -585,12 +609,16 @@ export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
 			{
 				name: 'left_elbow',
 				points: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 45,
+				targetHighAngle: 150
 			},
 			{
 				name: 'right_elbow',
 				points: [LANDMARK_INDICES.RIGHT_SHOULDER, LANDMARK_INDICES.RIGHT_ELBOW, LANDMARK_INDICES.RIGHT_WRIST],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 45,
+				targetHighAngle: 150
 			}
 		]
 	},
@@ -603,12 +631,16 @@ export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
 			{
 				name: 'left_knee',
 				points: [LANDMARK_INDICES.LEFT_HIP, LANDMARK_INDICES.LEFT_KNEE, LANDMARK_INDICES.LEFT_ANKLE],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 90,
+				targetHighAngle: 170
 			},
 			{
 				name: 'right_knee',
 				points: [LANDMARK_INDICES.RIGHT_HIP, LANDMARK_INDICES.RIGHT_KNEE, LANDMARK_INDICES.RIGHT_ANKLE],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 90,
+				targetHighAngle: 170
 			}
 		]
 	},
@@ -621,16 +653,30 @@ export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
 			{
 				name: 'left_elbow',
 				points: [LANDMARK_INDICES.LEFT_SHOULDER, LANDMARK_INDICES.LEFT_ELBOW, LANDMARK_INDICES.LEFT_WRIST],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 60,
+				targetHighAngle: 160
 			},
 			{
 				name: 'right_elbow',
 				points: [LANDMARK_INDICES.RIGHT_SHOULDER, LANDMARK_INDICES.RIGHT_ELBOW, LANDMARK_INDICES.RIGHT_WRIST],
-				weight: 1.0
+				weight: 1.0,
+				targetLowAngle: 60,
+				targetHighAngle: 160
 			}
 		]
 	}
 };
+
+/**
+ * PERFORMANCE OPTIMIZATION:
+ * The processExerciseReps function now accepts an optional preloadedConfig parameter.
+ * When a preloaded config is provided (e.g., from saved workouts), it eliminates the need
+ * for LLM calls during real-time exercise tracking, significantly improving performance.
+ * 
+ * This is particularly beneficial for the form-analysis page where configs are already
+ * loaded as part of the workout data structure.
+ */
 
 /**
  * Convenience function that automatically gets exercise config and processes reps
@@ -639,6 +685,7 @@ export const PREDEFINED_EXERCISE_CONFIGS: Record<string, ExerciseConfig> = {
  * @param lastProcessedRepCount The number of reps that were already processed
  * @param feedbackOptions Options for enabling RAG and voice features
  * @param exerciseDescription Optional description to help with config generation
+ * @param preloadedConfig Optional pre-loaded exercise config to use instead of loading/generating
  * @returns Promise containing rep count and new rep segments
  */
 export async function processExerciseReps(
@@ -646,10 +693,11 @@ export async function processExerciseReps(
 	exerciseName: string,
 	lastProcessedRepCount: number = 0,
 	feedbackOptions: FeedbackOptions = {},
-	exerciseDescription?: string
+	exerciseDescription?: string,
+	preloadedConfig?: ExerciseConfig
 ): Promise<{ repCount: number; newRepSegments: RepSegment[]; configUsed: ExerciseConfig | null }> {
-	// Get or generate exercise configuration
-	const exerciseConfig = await getExerciseConfig(exerciseName, exerciseDescription);
+	// Use preloaded config if provided, otherwise get or generate exercise configuration
+	const exerciseConfig = preloadedConfig || await getExerciseConfig(exerciseName, exerciseDescription);
 	
 	if (!exerciseConfig) {
 		console.error(`Could not get configuration for exercise: ${exerciseName}`);

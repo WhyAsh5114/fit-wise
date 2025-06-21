@@ -30,6 +30,8 @@
 			name: string;
 			points: [number, number, number];
 			weight?: number;
+			targetLowAngle?: number;
+			targetHighAngle?: number;
 		}>;
 	}
 
@@ -132,7 +134,11 @@
 			anglePoints: config.anglePoints?.map((angleConfig) => ({
 				name: angleConfig.name,
 				points: angleConfig.points,
-				weight: angleConfig.weight || 1.0
+				weight: angleConfig.weight || 1.0,
+				...(angleConfig.targetLowAngle !== undefined && angleConfig.targetHighAngle !== undefined && {
+					targetLowAngle: angleConfig.targetLowAngle,
+					targetHighAngle: angleConfig.targetHighAngle
+				})
 			})) || []
 		};
 		
@@ -393,6 +399,15 @@
 															<span class="w-2 h-2 rounded-full bg-purple-500"></span>
 															Indices: [{angleConfig.points.join(', ')}]
 														</div>
+														{#if angleConfig.targetLowAngle !== undefined && angleConfig.targetHighAngle !== undefined}
+															<div class="flex items-center gap-1">
+																<span class="w-2 h-2 rounded-full bg-green-500"></span>
+																<span class="text-green-700 font-medium">
+																	Target Range: {angleConfig.targetLowAngle}° - {angleConfig.targetHighAngle}°
+																	<span class="text-gray-500">({angleConfig.targetHighAngle - angleConfig.targetLowAngle}° ROM)</span>
+																</span>
+															</div>
+														{/if}
 													</div>
 												</div>
 											{/each}
