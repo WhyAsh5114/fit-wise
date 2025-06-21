@@ -27,7 +27,9 @@
 
 	const navItems = [
 		{ name: 'Dashboard', href: '/dashboard' },
-		{ name: 'Workouts', href: '/workouts' },
+		{ name: 'My Workouts', href: '/my-workouts' },
+		{ name: 'Exercise Configs', href: '/exercise-configs' },
+		{ name: 'Live Training', href: '/form-analysis' },
 		{ name: 'Progress', href: '/progress' },
 		{ name: 'Nutrition', href: '/nutrition' },
 		{ name: 'Settings', href: '/settings' }

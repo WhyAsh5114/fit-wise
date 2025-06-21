@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { generateObject } from 'ai';
 import { z } from 'zod';
 import type { RequestHandler } from './$types';
+import { prisma } from '$lib/prisma';
 
 // Configuration
 const LM_STUDIO_BASE_URL = process.env.LM_STUDIO_URL || 'http://172.21.96.1:1234';
@@ -86,7 +87,7 @@ const ExerciseAnalysisSchema = z.object({
 export const POST: RequestHandler = async ({ request }) => {
 	try {
 		console.log('Exercise Config API: Starting request processing...');
-		const { exerciseName, exerciseDescription } = await request.json();
+		const { exerciseName, exerciseDescription, autoSave = false } = await request.json();
 
 		if (!exerciseName) {
 			console.error('Exercise Config API: Exercise name is required');
@@ -174,6 +175,41 @@ Analyze this exercise and generate a MediaPipe pose tracking configuration. Cons
 
 		console.log('Exercise Config API: Generated exercise config:', JSON.stringify(result.object, null, 2));
 
+		let savedConfig = null;
+		
+		// Auto-save if requested
+		if (autoSave) {
+			try {
+				// Check if a config with this name already exists
+				const existingConfig = await prisma.exerciseConfig.findUnique({
+					where: { name: result.object.config.name }
+				});
+
+				if (!existingConfig) {
+					savedConfig = await prisma.exerciseConfig.create({
+						data: {
+							name: result.object.config.name,
+							displayName: exerciseName,
+							description: exerciseDescription || undefined,
+							exerciseType: result.object.exerciseType,
+							primaryMuscles: result.object.primaryMuscles,
+							movementPattern: result.object.movementPattern,
+							keyJoints: result.object.keyJoints,
+							movementDirection: result.object.movementDirection,
+							config: result.object.config,
+							generatedBy: 'AI'
+						}
+					});
+					console.log('Exercise Config API: Auto-saved config to database');
+				} else {
+					console.log('Exercise Config API: Config already exists, skipping auto-save');
+				}
+			} catch (saveError) {
+				console.error('Exercise Config API: Error auto-saving config:', saveError);
+				// Don't fail the request if saving fails
+			}
+		}
+
 		return json({
 			success: true,
 			exerciseName,
@@ -184,7 +220,9 @@ Analyze this exercise and generate a MediaPipe pose tracking configuration. Cons
 				keyJoints: result.object.keyJoints,
 				movementDirection: result.object.movementDirection
 			},
-			config: result.object.config
+			config: result.object.config,
+			saved: savedConfig !== null,
+			savedConfig
 		});
 
 	} catch (error) {

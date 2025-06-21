@@ -20,6 +20,7 @@
 		type ExerciseConfig
 	} from '$lib/workout-utils';
 	import { toast } from 'svelte-sonner';
+	import { page } from '$app/stores';
 
 	let videoElement: HTMLVideoElement;
 	let canvasElement: HTMLCanvasElement;
@@ -55,8 +56,50 @@
 		// Initialize canvas context
 		canvasCtx = canvasElement.getContext('2d')!;
 
+		// Handle query parameters for direct workout/config loading
+		const workoutId = $page.url.searchParams.get('workoutId');
+		const configId = $page.url.searchParams.get('configId');
+
 		// Load saved workouts
 		await loadSavedWorkouts();
+
+		// Auto-select workout or config if specified in URL
+		if (workoutId && savedWorkouts.length > 0) {
+			const workout = savedWorkouts.find(w => w.id === workoutId);
+			if (workout) {
+				selectWorkout(workout);
+				toast.success(`Loaded workout: ${workout.name}`);
+			}
+		} else if (configId) {
+			// Load specific exercise config for testing
+			try {
+				const response = await fetch('/api/exercise-configs');
+				if (response.ok) {
+					const data = await response.json();
+					const config = data.configs?.find((c: { id: string; displayName: string; name: string; config: object }) => c.id === configId);
+					if (config) {
+						// Create a temporary workout with just this exercise for testing
+						selectedWorkout = {
+							id: 'temp',
+							name: `Testing: ${config.displayName}`,
+							exercises: [{
+								id: 'temp-exercise',
+								name: config.name,
+								sets: 3,
+								reps: '8-12',
+								rest: '60s',
+								exerciseConfig: { config: config.config }
+							}]
+						};
+						currentExercise = selectedWorkout.exercises[0];
+						resetRepCount();
+						toast.success(`Loaded config for testing: ${config.displayName}`);
+					}
+				}
+			} catch (error) {
+				console.error('Error loading exercise config:', error);
+			}
+		}
 
 		// Dynamic imports for MediaPipe (client-side only)
 		try {
@@ -377,9 +420,9 @@
 
 <div class="container mx-auto space-y-6 p-6">
 	<div class="text-center">
-		<h1 class="mb-2 text-3xl font-bold">AI-Powered Workout Analysis</h1>
+		<h1 class="mb-2 text-3xl font-bold">Live Form Analysis</h1>
 		<p class="text-muted-foreground">
-			Select your camera or upload a video to analyze your workout form with AI pose detection
+			Real-time AI-powered pose detection and exercise form analysis with personalized feedback
 		</p>
 	</div>
 

@@ -35,6 +35,9 @@
 
 	let result: ExerciseConfigResult | null = null;
 	let error: string | null = null;
+	let saving = false;
+	let saveSuccess = false;
+	let saveError: string | null = null;
 
 	const predefinedExercises = [
 		{
@@ -105,6 +108,49 @@
 		exerciseDescription = '';
 		result = null;
 		error = null;
+		saveSuccess = false;
+		saveError = null;
+	}
+
+	async function saveConfig() {
+		if (!result) return;
+
+		saving = true;
+		saveError = null;
+		saveSuccess = false;
+
+		try {
+			const response = await fetch('/api/exercise-configs', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify({
+					name: result.config.name,
+					displayName: result.exerciseName,
+					description: exerciseDescription.trim() || undefined,
+					exerciseType: result.analysis.exerciseType,
+					primaryMuscles: result.analysis.primaryMuscles,
+					movementPattern: result.analysis.movementPattern,
+					keyJoints: result.analysis.keyJoints,
+					movementDirection: result.analysis.movementDirection,
+					config: result.config,
+					generatedBy: 'AI'
+				})
+			});
+
+			const data = await response.json();
+
+			if (data.success) {
+				saveSuccess = true;
+			} else {
+				saveError = data.error || 'Failed to save exercise configuration';
+			}
+		} catch (err) {
+			saveError = err instanceof Error ? err.message : 'An unexpected error occurred';
+		} finally {
+			saving = false;
+		}
 	}
 
 	// MediaPipe landmark names for reference
@@ -288,6 +334,44 @@
 							<summary class="p-3 cursor-pointer font-medium">View Raw JSON Config</summary>
 							<pre class="p-3 bg-gray-50 text-xs overflow-x-auto">{JSON.stringify(result.config, null, 2)}</pre>
 						</details>
+
+						<!-- Save Section -->
+						<div class="border-t pt-4">
+							{#if saveSuccess}
+								<div class="p-4 bg-green-50 border border-green-200 rounded-lg text-green-700 mb-4">
+									<div class="flex items-center gap-2">
+										<CheckCircle class="h-4 w-4" />
+										Configuration saved successfully! You can now use it in your workouts.
+									</div>
+								</div>
+							{/if}
+							
+							{#if saveError}
+								<div class="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 mb-4">
+									<div class="flex items-center gap-2">
+										<XCircle class="h-4 w-4" />
+										{saveError}
+									</div>
+								</div>
+							{/if}
+
+							<div class="flex gap-2">
+								<Button onclick={saveConfig} disabled={saving || saveSuccess} class="flex-1">
+									{#if saving}
+										<Loader2 class="mr-2 h-4 w-4 animate-spin" />
+										Saving...
+									{:else if saveSuccess}
+										<CheckCircle class="mr-2 h-4 w-4" />
+										Saved
+									{:else}
+										Save Configuration
+									{/if}
+								</Button>
+								<Button variant="outline" onclick={() => window.location.href = '/exercise-configs'}>
+									View All Configs
+								</Button>
+							</div>
+						</div>
 					</div>
 				{:else}
 					<div class="text-center text-muted-foreground p-8">

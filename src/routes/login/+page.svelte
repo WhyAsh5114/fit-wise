@@ -69,7 +69,7 @@
 			</div>
 
 			<div class="my-8 space-y-2">
-				{#if isLoggedInQuery.isPending}
+				{#if isLoggedInQuery.isPending && false}
 					<Skeleton class="h-10 w-full" />
 					<Skeleton class="h-10 w-full" />
 				{:else}
