@@ -21,6 +21,7 @@
 	} from '$lib/workout-utils';
 	import { toast } from 'svelte-sonner';
 	import { page } from '$app/stores';
+	import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
 
 	let videoElement: HTMLVideoElement;
 	let canvasElement: HTMLCanvasElement;
@@ -34,8 +35,7 @@
 	let selectedCameraId = '';
 	let currentStream: MediaStream | null = null;
 	let statusMessage = '';
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let pose: any = null;
+	let poseLandmarker: PoseLandmarker | null = null;
 
 	// Exercise tracking variables
 	let selectedExercise: ExerciseName = 'bicep_curl';
@@ -47,10 +47,6 @@
 	// Feature toggle variables
 	let enableRAG = false;
 	let enableVoice = false;
-
-	// MediaPipe imports will be done dynamically in onMount
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	let Pose: any, Camera: any, drawConnectors: any, drawLandmarks: any, POSE_CONNECTIONS: any;
 
 	onMount(async () => {
 		// Initialize canvas context
@@ -101,28 +97,28 @@
 			}
 		}
 
-		// Dynamic imports for MediaPipe (client-side only)
+		// Initialize MediaPipe Tasks Vision
 		try {
-			const [
-				{ Pose: PoseClass, POSE_CONNECTIONS: poseConnections },
-				{ Camera: CameraClass },
-				{ drawConnectors: drawConn, drawLandmarks: drawLand }
-			] = await Promise.all([
-				import('@mediapipe/pose'),
-				import('@mediapipe/camera_utils'),
-				import('@mediapipe/drawing_utils')
-			]);
-
-			Pose = PoseClass;
-			Camera = CameraClass;
-			drawConnectors = drawConn;
-			drawLandmarks = drawLand;
-			POSE_CONNECTIONS = poseConnections;
-
-			// Initialize MediaPipe Pose
-			initializePose();
+			const vision = await FilesetResolver.forVisionTasks(
+				'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.3/wasm'
+			);
+			
+			poseLandmarker = await PoseLandmarker.createFromOptions(vision, {
+				baseOptions: {
+					modelAssetPath: '/mediapipe/pose_landmarker_heavy.task',
+					delegate: 'GPU'
+				},
+				runningMode: 'VIDEO',
+				numPoses: 1,
+				minPoseDetectionConfidence: 0.5,
+				minPosePresenceConfidence: 0.5,
+				minTrackingConfidence: 0.5
+			});
+			
+			statusMessage = 'MediaPipe initialized successfully';
 		} catch (error) {
 			console.error('Failed to load MediaPipe:', error);
+			statusMessage = 'Failed to initialize MediaPipe';
 		}
 
 		// Get available cameras
@@ -184,70 +180,108 @@
 		}
 	}
 
-	function initializePose() {
-		if (!Pose) return;
+	function processVideoFrame() {
+		if (!poseLandmarker || !videoElement || videoElement.videoWidth === 0) return;
+		
+		try {
+			const result = poseLandmarker.detectForVideo(videoElement, performance.now());
+			
+			// Clear canvas
+			canvasCtx.save();
+			canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
 
-		pose = new Pose({
-			locateFile: (file: string) => {
-				return `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`;
-			}
-		});
+			// Draw the video frame
+			canvasCtx.drawImage(videoElement, 0, 0, canvasElement.width, canvasElement.height);
 
-		pose.setOptions({
-			modelComplexity: 1,
-			smoothLandmarks: true,
-			enableSegmentation: false,
-			smoothSegmentation: true,
-			minDetectionConfidence: 0.5,
-			minTrackingConfidence: 0.5
-		});
-
-		pose.onResults(onPoseResults);
-	}
-
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function onPoseResults(results: any) {
-		// Clear canvas
-		canvasCtx.save();
-		canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
-
-		// Draw the video frame
-		canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
-
-		// Draw pose landmarks if detected
-		if (results.poseLandmarks) {
-			// Add pose to history for rep counting
-			poseHistory.push(results.poseLandmarks);
-			// Update rep count using dynamic exercise configs
-			if (poseHistory.length > 15 && currentExercise?.exerciseConfig) {
-				processExerciseReps(poseHistory, currentExercise.name, lastProcessedRepCount, {
-					enableRAG,
-					enableVoice
-				})
-					.then((result) => {
-						if (result.repCount > maxRepsEverSeen) {
-							maxRepsEverSeen = result.repCount;
-							currentReps = result.repCount;
-							lastProcessedRepCount = result.repCount;
-						}
+			// Draw pose landmarks if detected
+			if (result.landmarks && result.landmarks.length > 0) {
+				const landmarks = result.landmarks[0]; // Get first person's landmarks
+				
+				// Convert landmarks to the format expected by workout-utils
+				const convertedLandmarks = landmarks.map(landmark => ({
+					x: landmark.x,
+					y: landmark.y,
+					z: landmark.z,
+					visibility: landmark.visibility || 1
+				}));
+				
+				// Add pose to history for rep counting
+				poseHistory.push(convertedLandmarks);
+				
+				// Update rep count using dynamic exercise configs
+				if (poseHistory.length > 15 && currentExercise?.exerciseConfig) {
+					processExerciseReps(poseHistory, currentExercise.name, lastProcessedRepCount, {
+						enableRAG,
+						enableVoice
 					})
-					.catch(console.error);
+						.then((result) => {
+							if (result.repCount > maxRepsEverSeen) {
+								maxRepsEverSeen = result.repCount;
+								currentReps = result.repCount;
+								lastProcessedRepCount = result.repCount;
+							}
+						})
+						.catch(console.error);
+				}
+
+				// Draw landmarks and connections
+				drawPoseLandmarks(landmarks);
 			}
 
-			// Draw connections
-			drawConnectors(canvasCtx, results.poseLandmarks, POSE_CONNECTIONS, {
-				color: '#00FF00',
-				lineWidth: 4
-			});
-
-			// Draw landmarks
-			drawLandmarks(canvasCtx, results.poseLandmarks, {
-				color: '#FF0000',
-				radius: 6
-			});
+			canvasCtx.restore();
+			
+			// Continue the detection loop if we're still detecting
+			if (isDetecting) {
+				requestAnimationFrame(processVideoFrame);
+			}
+		} catch (error) {
+			console.error('Error processing video frame:', error);
 		}
-
-		canvasCtx.restore();
+	}
+	
+	function drawPoseLandmarks(landmarks: { x: number; y: number; z?: number; visibility?: number }[]) {
+		// Draw connections between landmarks
+		const connections = [
+			// Face
+			[0, 1], [1, 2], [2, 3], [3, 7], [0, 4], [4, 5], [5, 6], [6, 8],
+			// Torso
+			[9, 10], [11, 12], [11, 13], [12, 14], [13, 15], [14, 16], [15, 17], [16, 18],
+			[15, 19], [16, 20], [17, 19], [18, 20], [11, 23], [12, 24], [23, 24],
+			// Arms
+			[11, 13], [12, 14], [13, 15], [14, 16], [15, 17], [16, 18], [15, 19], [16, 20],
+			[15, 21], [16, 22], [17, 19], [18, 20], [19, 21], [20, 22],
+			// Legs
+			[23, 25], [24, 26], [25, 27], [26, 28], [27, 29], [28, 30], [29, 31], [30, 32]
+		];
+		
+		// Draw connections
+		canvasCtx.strokeStyle = '#00FF00';
+		canvasCtx.lineWidth = 2;
+		canvasCtx.beginPath();
+		
+		for (const [start, end] of connections) {
+			if (landmarks[start] && landmarks[end]) {
+				const startPoint = landmarks[start];
+				const endPoint = landmarks[end];
+				canvasCtx.moveTo(startPoint.x * canvasElement.width, startPoint.y * canvasElement.height);
+				canvasCtx.lineTo(endPoint.x * canvasElement.width, endPoint.y * canvasElement.height);
+			}
+		}
+		canvasCtx.stroke();
+		
+		// Draw landmarks
+		canvasCtx.fillStyle = '#FF0000';
+		for (const landmark of landmarks) {
+			canvasCtx.beginPath();
+			canvasCtx.arc(
+				landmark.x * canvasElement.width,
+				landmark.y * canvasElement.height,
+				3,
+				0,
+				2 * Math.PI
+			);
+			canvasCtx.fill();
+		}
 	}
 
 	async function startCamera() {
@@ -277,19 +311,12 @@
 			canvasElement.width = videoElement.videoWidth || 640;
 			canvasElement.height = videoElement.videoHeight || 480;
 
-			// Start pose detection
-			if (pose && Camera) {
-				const camera = new Camera(videoElement, {
-					onFrame: async () => {
-						if (isDetecting) {
-							await pose.send({ image: videoElement });
-						}
-					},
-					width: canvasElement.width,
-					height: canvasElement.height
-				});
-				camera.start();
+			// Start pose detection with new MediaPipe Tasks
+			if (poseLandmarker) {
 				isDetecting = true;
+				processVideoFrame();
+			} else {
+				statusMessage = 'MediaPipe not initialized. Please refresh the page.';
 			}
 		} catch (error) {
 			console.error('Error starting camera:', error);
@@ -317,21 +344,11 @@
 		};
 
 		videoElement.onplay = () => {
-			if (pose) {
+			if (poseLandmarker) {
 				isDetecting = true;
 				processVideoFrame();
 			}
 		};
-	}
-
-	function processVideoFrame() {
-		if (!isDetecting || videoElement.paused || videoElement.ended) {
-			return;
-		}
-
-		pose.send({ image: videoElement }).then(() => {
-			requestAnimationFrame(processVideoFrame);
-		});
 	}
 
 	function playVideo() {

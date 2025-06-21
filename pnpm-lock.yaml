@@ -17,18 +17,12 @@ importers:
       '@ai-sdk/svelte':
         specifier: ^2.1.12
         version: 2.1.12(svelte@5.34.7)(zod@3.25.67)
-      '@mediapipe/camera_utils':
-        specifier: ^0.3.1675466862
-        version: 0.3.1675466862
       '@mediapipe/control_utils':
         specifier: ^0.6.1675466023
         version: 0.6.1675466023
-      '@mediapipe/drawing_utils':
-        specifier: ^0.3.1675466124
-        version: 0.3.1675466124
-      '@mediapipe/pose':
-        specifier: ^0.5.1675469404
-        version: 0.5.1675469404
+      '@mediapipe/tasks-vision':
+        specifier: 0.10.22-rc.20250304
+        version: 0.10.22-rc.20250304
       '@qdrant/js-client-rest':
         specifier: ^1.14.1
         version: 1.14.1(typescript@5.8.3)
@@ -545,17 +539,11 @@ packages:
     peerDependencies:
       svelte: ^5
 
-  '@mediapipe/camera_utils@0.3.1675466862':
-    resolution: {integrity: sha512-siuXBoUxWo9WL0MeAxIxvxY04bvbtdNl7uCxoJxiAiRtNnCYrurr7Vl5VYQ94P7Sq0gVq6PxIDhWWeZ/pLnSzw==}
-
   '@mediapipe/control_utils@0.6.1675466023':
     resolution: {integrity: sha512-CB+L71vUJJSqvULGsZGfqkEiqywoCB898MiM6qWGrk8t5El0HVmHrQbsh2Gx3/N/V2xlYzoU43Wwr2FEAIFHzg==}
 
-  '@mediapipe/drawing_utils@0.3.1675466124':
-    resolution: {integrity: sha512-/IWIB/iYRMtiUKe3k7yGqvwseWHCOqzVpRDfMgZ6gv9z7EEimg6iZbRluoPbcNKHbYSxN5yOvYTzUYb8KVf22Q==}
-
-  '@mediapipe/pose@0.5.1675469404':
-    resolution: {integrity: sha512-DFZsNWTsSphRIZppnUCuunzBiHP2FdJXR9ehc7mMi4KG+oPaOH0Em3d6kr7Py+TSyTXC1doH88KcF28k2sBxsQ==}
+  '@mediapipe/tasks-vision@0.10.22-rc.20250304':
+    resolution: {integrity: sha512-dElxVXMFGthshfIj+qAVm8KE2jmNo2p8oXFib8WzEjb7GNaX/ClWBc8UJfoSZwjEMVrdHJ4YUfa7P3ifl6MIWw==}
 
   '@noble/ciphers@0.6.0':
     resolution: {integrity: sha512-mIbq/R9QXk5/cTfESb1OKtyFnk7oc1Om/8onA1158K9/OZUQFDEVy55jVTato+xmp3XX6F6Qh0zz0Nc1AxAlRQ==}
@@ -2812,13 +2800,9 @@ snapshots:
     dependencies:
       svelte: 5.34.7
 
-  '@mediapipe/camera_utils@0.3.1675466862': {}
-
   '@mediapipe/control_utils@0.6.1675466023': {}
 
-  '@mediapipe/drawing_utils@0.3.1675466124': {}
-
-  '@mediapipe/pose@0.5.1675469404': {}
+  '@mediapipe/tasks-vision@0.10.22-rc.20250304': {}
 
   '@noble/ciphers@0.6.0': {}
 
