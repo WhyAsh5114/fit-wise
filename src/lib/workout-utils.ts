@@ -241,8 +241,10 @@ export function segmentReps(poseHistory: Pose[], exerciseConfig: ExerciseConfig,
 						
 						newRepSegments.push(repSegment);
 						
-						// Process the rep segment (console log for now)
-						processRepSegment(repSegment);
+						// Process the rep segment (console log and AI feedback)
+						processRepSegment(repSegment).catch(error => {
+							console.error('Error processing rep segment:', error);
+						});
 					}
 				}
 			}
@@ -295,7 +297,7 @@ export type RepAnalysis = {
 /**
  * Process a completed rep segment and send angle data to analysis
  */
-function processRepSegment(repSegment: RepSegment): void {
+async function processRepSegment(repSegment: RepSegment): Promise<void> {
 	if (repSegment.angles.length === 0) {
 		console.log(`Rep #${repSegment.repNumber} - No angle data available`);
 		return;
@@ -319,7 +321,27 @@ function processRepSegment(repSegment: RepSegment): void {
 		rangeOfMotion: Math.round(rangeOfMotion * 10) / 10
 	};
 
-	console.log(repAnalysis);
+	console.log('Rep Analysis:', repAnalysis);
+
+	// Send to AI feedback API
+	try {
+		const response = await fetch('/api/feedback', {
+			method: 'POST',
+			headers: {
+				'Content-Type': 'application/json'
+			},
+			body: JSON.stringify(repAnalysis)
+		});
+
+		if (response.ok) {
+			const feedback = await response.json();
+			console.log('AI Feedback:', feedback);
+		} else {
+			console.error('Failed to get AI feedback:', response.statusText);
+		}
+	} catch (error) {
+		console.error('Error calling feedback API:', error);
+	}
 }
 
 // --- Pre-defined Exercise Configurations ---

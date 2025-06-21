@@ -1,0 +1,25 @@
+import { z } from 'zod';
+
+// Input schema for workout feedback
+export const WorkoutFeedbackInputSchema = z.object({
+	exerciseName: z.string(),
+	repNumber: z.number(),
+	duration: z.number(),
+	angleRange: z.object({
+		min: z.number(),
+		max: z.number()
+	}),
+	averageAngle: z.number(),
+	rangeOfMotion: z.number()
+});
+
+// Output schema for workout feedback response
+export const WorkoutFeedbackOutputSchema = z.object({
+	feedback: z.string().max(500),
+	score: z.number().min(0).max(100),
+	classification: z.enum(['good', 'okay', 'bad'])
+});
+
+// TypeScript types derived from schemas
+export type WorkoutFeedbackInput = z.infer<typeof WorkoutFeedbackInputSchema>;
+export type WorkoutFeedbackOutput = z.infer<typeof WorkoutFeedbackOutputSchema>;
