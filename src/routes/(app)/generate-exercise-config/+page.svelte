@@ -4,7 +4,7 @@
 	import { Textarea } from '$lib/components/ui/textarea';
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Badge } from '$lib/components/ui/badge';
-	import { Select, SelectContent, SelectItem, SelectTrigger } from '$lib/components/ui/select';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { Loader2, Dumbbell, Settings, CheckCircle, XCircle } from 'lucide-svelte';
 
 	let exerciseName = '';
@@ -230,20 +230,20 @@
 					<label for="rom-focus" class="block text-sm font-medium mb-2">
 						Range of Motion Focus
 					</label>
-					<Select value={romFocus} onValueChange={(v) => romFocus = v || 'standard'}>
-						<SelectTrigger>
+					<Select.Root type="single" bind:value={romFocus}>
+						<Select.Trigger class="w-full">
 							{romFocus === 'low' ? 'Low - Conservative for beginners' : 
 							 romFocus === 'high' ? 'High - Extended for advanced users' :
 							 romFocus === 'maximum' ? 'Maximum - Elite athletes' :
 							 'Standard - Average fitness level'}
-						</SelectTrigger>
-						<SelectContent>
-							<SelectItem value="low">Low - Conservative for beginners</SelectItem>
-							<SelectItem value="standard">Standard - Average fitness level</SelectItem>
-							<SelectItem value="high">High - Extended for advanced users</SelectItem>
-							<SelectItem value="maximum">Maximum - Elite athletes</SelectItem>
-						</SelectContent>
-					</Select>
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="low">Low - Conservative for beginners</Select.Item>
+							<Select.Item value="standard">Standard - Average fitness level</Select.Item>
+							<Select.Item value="high">High - Extended for advanced users</Select.Item>
+							<Select.Item value="maximum">Maximum - Elite athletes</Select.Item>
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<div class="flex gap-2">
@@ -326,7 +326,7 @@
 						<!-- Tracking Configuration -->
 						<div>
 							<h4 class="font-semibold mb-2">Tracking Configuration</h4>
-							<div class="bg-gray-50 p-3 rounded-lg space-y-2 text-sm">
+							<div class="p-3 rounded-lg space-y-2 text-sm">
 								<div><strong>Exercise Name:</strong> {result.config.name}</div>
 								<div><strong>Initial Direction:</strong> {result.config.initialDirection}</div>
 								<div><strong>Min Peak Distance:</strong> {result.config.minPeakDistance} frames</div>
@@ -357,7 +357,7 @@
 						<!-- JSON Output -->
 						<details class="border rounded-lg">
 							<summary class="p-3 cursor-pointer font-medium">View Raw JSON Config</summary>
-							<pre class="p-3 bg-gray-50 text-xs overflow-x-auto">{JSON.stringify(result.config, null, 2)}</pre>
+							<pre class="p-3 text-xs overflow-x-auto">{JSON.stringify(result.config, null, 2)}</pre>
 						</details>
 
 						<!-- Save Section -->

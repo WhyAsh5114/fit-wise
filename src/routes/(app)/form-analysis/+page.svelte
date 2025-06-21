@@ -4,6 +4,7 @@
 	import { Card, CardContent, CardHeader, CardTitle } from '$lib/components/ui/card';
 	import { Label } from '$lib/components/ui/label';
 	import { Switch } from '$lib/components/ui/switch';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import {
 		VideoIcon,
 		CameraIcon,
@@ -33,6 +34,7 @@
 	let selectedSource = 'camera';
 	let availableCameras: MediaDeviceInfo[] = [];
 	let selectedCameraId = '';
+	let selectedWorkoutId = '';
 	let currentStream: MediaStream | null = null;
 	let statusMessage = '';
 	let poseLandmarker: PoseLandmarker | null = null;
@@ -443,6 +445,12 @@
 		resetRepCount();
 		toast.success(`Selected: ${workout.name}`);
 	}
+
+	// Handle workout selection changes
+	$: if (selectedWorkoutId) {
+		const workout = savedWorkouts.find((w) => w.id === selectedWorkoutId);
+		if (workout) selectWorkout(workout);
+	}
 </script>
 
 <div class="container mx-auto space-y-6 p-6">
@@ -467,20 +475,17 @@
 				<div class="space-y-2">
 					<Label for="workout-select">Select Workout</Label>
 					{#if savedWorkouts.length > 0}
-						<select
-							id="workout-select"
-							onchange={(e) => {
-								const workoutId = e.currentTarget.value;
-								const workout = savedWorkouts.find((w) => w.id === workoutId);
-								if (workout) selectWorkout(workout);
-							}}
-							class="border-input bg-background w-full rounded-md border px-3 py-2 text-sm"
-						>
-							<option value="">Choose a workout...</option>
-							{#each savedWorkouts as workout (workout.id)}
-								<option value={workout.id}>🏋️ {workout.name}</option>
-							{/each}
-						</select>
+						<Select.Root type="single" bind:value={selectedWorkoutId}>
+							<Select.Trigger class="w-full">
+								{selectedWorkout ? `🏋️ ${selectedWorkout.name}` : 'Choose a workout...'}
+							</Select.Trigger>
+							<Select.Content>
+								<Select.Item value="">Choose a workout...</Select.Item>
+								{#each savedWorkouts as workout (workout.id)}
+									<Select.Item value={workout.id}>🏋️ {workout.name}</Select.Item>
+								{/each}
+							</Select.Content>
+						</Select.Root>
 					{:else}
 						<div class="text-muted-foreground py-4 text-center">
 							<Dumbbell class="mx-auto mb-2 h-8 w-8 opacity-50" />
@@ -501,15 +506,15 @@
 				<!-- Source Type Selection -->
 				<div class="space-y-2">
 					<Label for="source-select">Input Source</Label>
-					<select
-						id="source-select"
-						bind:value={selectedSource}
-						onchange={() => stopDetection()}
-						class="border-input bg-background ring-offset-background focus:ring-ring w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2"
-					>
-						<option value="camera">📹 Camera</option>
-						<option value="video">🎥 Video File</option>
-					</select>
+					<Select.Root type="single" bind:value={selectedSource} onValueChange={() => stopDetection()}>
+						<Select.Trigger class="w-full">
+							{selectedSource === 'camera' ? '📹 Camera' : '🎥 Video File'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="camera">📹 Camera</Select.Item>
+							<Select.Item value="video">🎥 Video File</Select.Item>
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				{#if selectedSource === 'camera'}
@@ -521,21 +526,29 @@
 								🔄 Refresh
 							</Button>
 						</div>
-						<select
-							id="camera-select"
-							bind:value={selectedCameraId}
-							class="border-input bg-background ring-offset-background focus:ring-ring w-full rounded-md border px-3 py-2 text-sm focus:ring-2 focus:ring-offset-2"
-						>
-							{#if availableCameras.length === 0}
-								<option value="">No cameras found - click Refresh</option>
-							{:else}
-								{#each availableCameras as camera (camera.deviceId)}
-									<option value={camera.deviceId}>
-										{camera.label || `Camera ${camera.deviceId.slice(0, 8)}...`}
-									</option>
-								{/each}
-							{/if}
-						</select>
+						<Select.Root type="single" bind:value={selectedCameraId}>
+							<Select.Trigger class="w-full">
+								{#if availableCameras.length === 0}
+									No cameras found - click Refresh
+								{:else}
+									{(() => {
+										const camera = availableCameras.find(c => c.deviceId === selectedCameraId);
+										return camera ? (camera.label || `Camera ${camera.deviceId.slice(0, 8)}...`) : 'Select a camera...';
+									})()}
+								{/if}
+							</Select.Trigger>
+							<Select.Content>
+								{#if availableCameras.length === 0}
+									<Select.Item value="">No cameras found - click Refresh</Select.Item>
+								{:else}
+									{#each availableCameras as camera (camera.deviceId)}
+										<Select.Item value={camera.deviceId}>
+											{camera.label || `Camera ${camera.deviceId.slice(0, 8)}...`}
+										</Select.Item>
+									{/each}
+								{/if}
+							</Select.Content>
+						</Select.Root>
 
 						{#if statusMessage}
 							<p class="text-muted-foreground text-xs">{statusMessage}</p>

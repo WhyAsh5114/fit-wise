@@ -5,6 +5,7 @@
 	import { Badge } from '$lib/components/ui/badge';
 	import { Input } from '$lib/components/ui/input';
 	import { Label } from '$lib/components/ui/label';
+	import * as Select from '$lib/components/ui/select/index.js';
 	import { 
 		SearchIcon,
 		FilterIcon,
@@ -168,44 +169,47 @@
 				
 				<div class="space-y-2">
 					<Label for="type">Exercise Type</Label>
-					<select
-						id="type"
-						bind:value={selectedType}
-						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<option value="">All Types</option>
-						{#each exerciseTypes as type (type)}
-							<option value={type}>{type.replace('_', ' ')}</option>
-						{/each}
-					</select>
+					<Select.Root type="single" bind:value={selectedType}>
+						<Select.Trigger class="w-full">
+							{selectedType || 'All Types'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="">All Types</Select.Item>
+							{#each exerciseTypes as type (type)}
+								<Select.Item value={type}>{type.replace('_', ' ')}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<div class="space-y-2">
 					<Label for="pattern">Movement Pattern</Label>
-					<select
-						id="pattern"
-						bind:value={selectedPattern}
-						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<option value="">All Patterns</option>
-						{#each movementPatterns as pattern (pattern)}
-							<option value={pattern}>{pattern}</option>
-						{/each}
-					</select>
+					<Select.Root type="single" bind:value={selectedPattern}>
+						<Select.Trigger class="w-full">
+							{selectedPattern || 'All Patterns'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="">All Patterns</Select.Item>
+							{#each movementPatterns as pattern (pattern)}
+								<Select.Item value={pattern}>{pattern}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<div class="space-y-2">
 					<Label for="source">Source</Label>
-					<select
-						id="source"
-						bind:value={selectedSource}
-						class="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-					>
-						<option value="">All Sources</option>
-						{#each sources as source (source)}
-							<option value={source}>{source}</option>
-						{/each}
-					</select>
+					<Select.Root type="single" bind:value={selectedSource}>
+						<Select.Trigger class="w-full">
+							{selectedSource || 'All Sources'}
+						</Select.Trigger>
+						<Select.Content>
+							<Select.Item value="">All Sources</Select.Item>
+							{#each sources as source (source)}
+								<Select.Item value={source}>{source}</Select.Item>
+							{/each}
+						</Select.Content>
+					</Select.Root>
 				</div>
 
 				<div class="flex items-end space-y-2">
