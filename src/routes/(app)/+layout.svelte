@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
+	import { page } from '$app/state';
 	import { authClient } from '$lib/auth-client';
 	import { toast } from 'svelte-sonner';
 	import { Button } from '$lib/components/ui/button';
@@ -25,11 +26,11 @@
 	const session = authClient.useSession();
 
 	const navItems = [
-		{ name: 'Dashboard', href: '/dashboard', active: true },
-		{ name: 'Workouts', href: '/workouts', active: false },
-		{ name: 'Progress', href: '/progress', active: false },
-		{ name: 'Nutrition', href: '/nutrition', active: false },
-		{ name: 'Settings', href: '/settings', active: false }
+		{ name: 'Dashboard', href: '/dashboard' },
+		{ name: 'Workouts', href: '/workouts' },
+		{ name: 'Progress', href: '/progress' },
+		{ name: 'Nutrition', href: '/nutrition' },
+		{ name: 'Settings', href: '/settings' }
 	];
 
 	async function handleSignOut() {
@@ -76,7 +77,7 @@
 					<SidebarMenu>
 						{#each navItems as item (item.name)}
 							<SidebarMenuItem>
-								<SidebarMenuButton isActive={item.active}>
+								<SidebarMenuButton isActive={page.url.pathname === item.href}>
 									<a href={item.href} class="flex items-center w-full">
 										<span>{item.name}</span>
 									</a>
