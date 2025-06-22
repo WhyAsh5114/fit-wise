@@ -56,6 +56,8 @@
 ## 🤖 Agentic AI Workflow
 
 FitWise implements a sophisticated agentic AI system that orchestrates multiple tools and knowledge sources to provide comprehensive fitness assistance:
+![Editor _ Mermaid Chart-2025-06-22-011233](https://github.com/user-attachments/assets/ccda9128-e5f2-4045-a161-aae3a73deae6)
+
 
 ### Agentic Components:
 
