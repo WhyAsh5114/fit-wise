@@ -2,6 +2,12 @@
 
 **FitWise** is an intelligent AI-powered workout assistant that combines **Agentic AI**, **RAG-enhanced knowledge**, and **MediaPipe pose detection** to create personalized workout routines and provide real-time form correction — designed for fitness enthusiasts at every level.
 
+![Screenshot 2025-06-22 045702](https://github.com/user-attachments/assets/f68cb949-4dcd-406f-9eb3-c41e8b59f632)
+
+![Screenshot 2025-06-22 054148](https://github.com/user-attachments/assets/25e6f9a0-e34b-4919-bab8-e94ba8065013)
+
+![Screenshot 2025-06-22 045724](https://github.com/user-attachments/assets/8522c370-0f70-4646-a5e2-21fcc938d14d)
+
 ---
 
 ## 🚀 Core Features
