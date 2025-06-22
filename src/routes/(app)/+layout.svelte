@@ -29,10 +29,7 @@
 		{ name: 'Dashboard', href: '/dashboard' },
 		{ name: 'My Workouts', href: '/my-workouts' },
 		{ name: 'Exercise Configs', href: '/exercise-configs' },
-		{ name: 'Live Training', href: '/form-analysis' },
-		{ name: 'Progress', href: '/progress' },
-		{ name: 'Nutrition', href: '/nutrition' },
-		{ name: 'Settings', href: '/settings' }
+		{ name: 'Live Training', href: '/form-analysis' }
 	];
 
 	async function handleSignOut() {
@@ -60,7 +57,9 @@
 			<SidebarMenu>
 				<SidebarMenuItem>
 					<SidebarMenuButton size="lg">
-						<div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-primary text-primary-foreground">
+						<div
+							class="bg-primary text-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg"
+						>
 							<span class="font-bold">F</span>
 						</div>
 						<div class="grid flex-1 text-left text-sm leading-tight">
@@ -80,7 +79,7 @@
 						{#each navItems as item (item.name)}
 							<SidebarMenuItem>
 								<SidebarMenuButton isActive={page.url.pathname === item.href}>
-									<a href={item.href} class="flex items-center w-full">
+									<a href={item.href} class="flex w-full items-center">
 										<span>{item.name}</span>
 									</a>
 								</SidebarMenuButton>
@@ -96,10 +95,17 @@
 			{#if $session.data?.user}
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<SidebarMenuButton size="lg" class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
-							<div class="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+						<SidebarMenuButton
+							size="lg"
+							class="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+						>
+							<div
+								class="bg-sidebar-primary text-sidebar-primary-foreground flex aspect-square size-8 items-center justify-center rounded-lg"
+							>
 								<span class="text-sm font-medium">
-									{$session.data.user.name?.charAt(0).toUpperCase() || $session.data.user.email?.charAt(0).toUpperCase() || 'U'}
+									{$session.data.user.name?.charAt(0).toUpperCase() ||
+										$session.data.user.email?.charAt(0).toUpperCase() ||
+										'U'}
 								</span>
 							</div>
 							<div class="grid flex-1 text-left text-sm leading-tight">
@@ -113,15 +119,15 @@
 						</SidebarMenuButton>
 					</SidebarMenuItem>
 				</SidebarMenu>
-				
+
 				<SidebarSeparator />
-				
+
 				<!-- Sign Out Button -->
 				<SidebarMenu>
 					<SidebarMenuItem>
-						<Button 
-							variant="outline" 
-							size="sm" 
+						<Button
+							variant="outline"
+							size="sm"
 							onclick={handleSignOut}
 							class="w-full justify-start"
 						>
@@ -130,23 +136,23 @@
 					</SidebarMenuItem>
 				</SidebarMenu>
 			{/if}
-			
+
 			<SidebarSeparator />
-			
+
 			<!-- Theme Toggle -->
 			<SidebarMenu>
 				<SidebarMenuItem>
 					<div class="flex items-center justify-between px-2 py-1">
-						<span class="text-sm text-muted-foreground">Theme</span>
+						<span class="text-muted-foreground text-sm">Theme</span>
 						<ModeToggle />
 					</div>
 				</SidebarMenuItem>
 			</SidebarMenu>
-			
+
 			<SidebarSeparator />
-			
+
 			<!-- Footer Info -->
-			<div class="px-2 py-1 text-xs text-muted-foreground">
+			<div class="text-muted-foreground px-2 py-1 text-xs">
 				<p>© 2025 FitWise</p>
 			</div>
 		</SidebarFooter>
