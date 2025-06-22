@@ -228,6 +228,48 @@ AI: "Generated tracking configuration for tricep dips with elbow angle monitorin
 
 ---
 
+## 🚧 Challenges I Ran Into
+
+Building FitWise presented several unique technical challenges that required innovative solutions:
+
+### **MediaPipe Angle Data Preprocessing**
+Transforming raw MediaPipe pose landmarks into meaningful angle data for LLM consumption was more complex than anticipated. The challenge involved:
+- **Noisy Landmark Data**: MediaPipe outputs can be jittery, requiring sophisticated smoothing algorithms
+- **Multi-Joint Coordination**: Creating composite angle signals from multiple body joints while maintaining biomechanical accuracy
+- **Peak Detection Logic**: Developing adaptive algorithms to detect rep peaks/valleys across different exercise patterns
+- **Angle Normalization**: Ensuring angle data is consistent and interpretable for downstream LLM analysis
+
+**Solution**: Implemented weighted composite angle calculations with moving average smoothing and adaptive peak detection that considers exercise-specific movement patterns.
+
+### **Real-Time Model Streaming with Minimal Latency**
+Achieving fast response times while coordinating multiple AI models (LLM, RAG, TTS) proved challenging:
+- **RAG Pipeline Bottleneck**: Vector search in Qdrant + embedding generation + LLM processing created latency spikes
+- **Streaming Conflicts**: Balancing real-time pose feedback with chat-based AI responses
+- **Memory Management**: Local models consuming significant RAM while maintaining smooth pose detection
+- **Tool Coordination**: Managing sequential tool calls without blocking the UI
+
+**Solution**: Implemented relevance thresholding (70%+) for RAG, aggressive caching of exercise configs, and background streaming with tool call optimization.
+
+### **Quality Data Scraping for RAG Embeddings**
+Building a robust knowledge base from exercise science content required careful data curation:
+- **Content Quality**: Filtering scientific articles from fitness blog spam and misinformation
+- **Source Diversity**: Balancing peer-reviewed research with practical training insights
+- **Embedding Consistency**: Ensuring local embedding models produce meaningful vector representations
+- **Data Structure**: Organizing scraped content for optimal retrieval performance
+
+**Solution**: Focused on reputable sources (RPStrength, research papers), implemented content validation, and used proven embedding models like `all-MiniLM-L6-v2`.
+
+### **Local Model Quality vs. Speed Trade-offs**
+Running everything locally for privacy while maintaining performance created difficult compromises:
+- **Model Size Limitations**: Smaller models (3B-4B parameters) vs. quality of larger cloud models
+- **Hardware Constraints**: Balancing LLM inference, embedding generation, and MediaPipe processing on consumer hardware
+- **Response Quality**: Local models sometimes producing less nuanced feedback compared to GPT-4 class models
+- **Context Length**: Smaller models struggling with long conversation history and complex RAG context
+
+**Solution**: Chose `qwen3-4b` for good instruction following, implemented smart context truncation, and optimized prompts for smaller model capabilities while maintaining acceptable quality.
+
+---
+
 ## � Documentation
 
 - **[AI Feedback Setup](docs/AI_FEEDBACK_SETUP.md)**: Configure Ollama and LM Studio for feedback
@@ -245,7 +287,7 @@ We welcome contributions! Here's how you can help:
 2. **Create a feature branch**: `git checkout -b feature/amazing-feature`
 3. **Commit changes**: `git commit -m 'Add amazing feature'`
 4. **Push to branch**: `git push origin feature/amazing-feature`
-5. **Open a Pull Request**
+5. **Open a Pull Request`
 
 ### **Areas for Contribution**
 - Exercise science research integration
